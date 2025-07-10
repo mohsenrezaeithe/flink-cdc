@@ -50,12 +50,6 @@ limitations under the License.
             <version>${debezium.version}</version>
         </dependency>
 
-        <dependency>
-            <groupId>org.apache.flink</groupId>
-            <artifactId>flink-cdc-common</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-
         <!-- test dependencies on Debezium -->
 
         <dependency>
