@@ -79,7 +79,7 @@ import org.apache.flink.types.Row;
 import org.apache.flink.types.RowKind;
 import org.apache.flink.util.UserCodeClassLoader;
 
-import org.apache.flink.shaded.guava31.com.google.common.collect.ImmutableMap;
+import org.apache.flink.shaded.guava33.com.google.common.collect.ImmutableMap;
 
 import org.apache.calcite.sql.validate.SqlValidatorException;
 import org.apache.paimon.catalog.Catalog;

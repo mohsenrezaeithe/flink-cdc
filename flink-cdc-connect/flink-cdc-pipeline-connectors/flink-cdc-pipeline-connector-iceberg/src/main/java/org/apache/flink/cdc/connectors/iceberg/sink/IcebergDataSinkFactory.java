@@ -26,7 +26,7 @@ import org.apache.flink.cdc.common.sink.DataSink;
 import org.apache.flink.cdc.connectors.iceberg.sink.utils.OptionUtils;
 import org.apache.flink.cdc.connectors.iceberg.sink.v2.compaction.CompactionOptions;
 
-import org.apache.flink.shaded.guava31.com.google.common.collect.ImmutableMap;
+import org.apache.flink.shaded.guava33.com.google.common.collect.ImmutableMap;
 
 import org.apache.iceberg.CatalogProperties;
 

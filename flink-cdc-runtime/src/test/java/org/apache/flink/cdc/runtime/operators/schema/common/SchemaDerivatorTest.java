@@ -33,8 +33,8 @@ import org.apache.flink.cdc.common.schema.Schema;
 import org.apache.flink.cdc.common.sink.MetadataApplier;
 import org.apache.flink.cdc.common.types.DataTypes;
 
-import org.apache.flink.shaded.guava31.com.google.common.collect.HashBasedTable;
-import org.apache.flink.shaded.guava31.com.google.common.collect.Table;
+import org.apache.flink.shaded.guava33.com.google.common.collect.HashBasedTable;
+import org.apache.flink.shaded.guava33.com.google.common.collect.Table;
 
 import org.junit.jupiter.api.Test;
 

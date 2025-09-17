@@ -20,7 +20,7 @@ package org.apache.flink.cdc.cli.utils;
 import org.apache.flink.cdc.common.configuration.Configuration;
 import org.apache.flink.core.fs.Path;
 
-import org.apache.flink.shaded.guava31.com.google.common.base.Joiner;
+import org.apache.flink.shaded.guava33.com.google.common.base.Joiner;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

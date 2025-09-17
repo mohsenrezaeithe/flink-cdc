@@ -32,7 +32,7 @@ import org.apache.flink.cdc.connectors.base.source.metrics.SourceEnumeratorMetri
 import org.apache.flink.util.FlinkRuntimeException;
 import org.apache.flink.util.Preconditions;
 
-import org.apache.flink.shaded.guava31.com.google.common.util.concurrent.ThreadFactoryBuilder;
+import org.apache.flink.shaded.guava33.com.google.common.util.concurrent.ThreadFactoryBuilder;
 
 import io.debezium.relational.TableId;
 import io.debezium.relational.history.TableChanges;

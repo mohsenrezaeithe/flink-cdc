@@ -22,7 +22,7 @@ import org.apache.flink.cdc.common.event.DataChangeEvent;
 import org.apache.flink.cdc.common.event.Event;
 import org.apache.flink.cdc.common.event.SchemaChangeEvent;
 
-import org.apache.flink.shaded.guava31.com.google.common.io.BaseEncoding;
+import org.apache.flink.shaded.guava33.com.google.common.io.BaseEncoding;
 
 import java.util.ArrayList;
 import java.util.List;

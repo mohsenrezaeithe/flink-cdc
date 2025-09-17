@@ -42,8 +42,8 @@ import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
-import org.apache.flink.shaded.guava31.com.google.common.collect.HashBasedTable;
-import org.apache.flink.shaded.guava31.com.google.common.collect.Table;
+import org.apache.flink.shaded.guava33.com.google.common.collect.HashBasedTable;
+import org.apache.flink.shaded.guava33.com.google.common.collect.Table;
 
 import javax.annotation.Nullable;
 

@@ -22,9 +22,9 @@ import org.apache.flink.cdc.common.event.TableId;
 import org.apache.flink.cdc.common.route.RouteRule;
 import org.apache.flink.cdc.common.schema.Selectors;
 
-import org.apache.flink.shaded.guava31.com.google.common.cache.CacheBuilder;
-import org.apache.flink.shaded.guava31.com.google.common.cache.CacheLoader;
-import org.apache.flink.shaded.guava31.com.google.common.cache.LoadingCache;
+import org.apache.flink.shaded.guava33.com.google.common.cache.CacheBuilder;
+import org.apache.flink.shaded.guava33.com.google.common.cache.CacheLoader;
+import org.apache.flink.shaded.guava33.com.google.common.cache.LoadingCache;
 
 import javax.annotation.Nonnull;
 

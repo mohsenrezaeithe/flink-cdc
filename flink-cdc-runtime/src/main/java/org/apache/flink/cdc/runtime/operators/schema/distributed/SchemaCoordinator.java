@@ -40,10 +40,10 @@ import org.apache.flink.runtime.operators.coordination.CoordinationResponse;
 import org.apache.flink.runtime.operators.coordination.OperatorCoordinator;
 import org.apache.flink.util.FlinkRuntimeException;
 
-import org.apache.flink.shaded.guava31.com.google.common.collect.HashBasedTable;
-import org.apache.flink.shaded.guava31.com.google.common.collect.HashMultimap;
-import org.apache.flink.shaded.guava31.com.google.common.collect.Multimap;
-import org.apache.flink.shaded.guava31.com.google.common.collect.Table;
+import org.apache.flink.shaded.guava33.com.google.common.collect.HashBasedTable;
+import org.apache.flink.shaded.guava33.com.google.common.collect.HashMultimap;
+import org.apache.flink.shaded.guava33.com.google.common.collect.Multimap;
+import org.apache.flink.shaded.guava33.com.google.common.collect.Table;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

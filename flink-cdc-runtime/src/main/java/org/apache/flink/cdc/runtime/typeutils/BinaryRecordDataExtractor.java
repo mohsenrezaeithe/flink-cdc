@@ -31,7 +31,7 @@ import org.apache.flink.cdc.common.types.VarBinaryType;
 import org.apache.flink.cdc.common.utils.Preconditions;
 import org.apache.flink.cdc.common.utils.SchemaUtils;
 
-import org.apache.flink.shaded.guava31.com.google.common.io.BaseEncoding;
+import org.apache.flink.shaded.guava33.com.google.common.io.BaseEncoding;
 
 import javax.annotation.CheckReturnValue;
 

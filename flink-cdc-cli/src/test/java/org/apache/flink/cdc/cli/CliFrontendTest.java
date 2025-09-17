@@ -23,7 +23,7 @@ import org.apache.flink.cdc.composer.definition.PipelineDef;
 import org.apache.flink.core.execution.RestoreMode;
 import org.apache.flink.core.fs.Path;
 
-import org.apache.flink.shaded.guava31.com.google.common.io.Resources;
+import org.apache.flink.shaded.guava33.com.google.common.io.Resources;
 
 import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.DefaultParser;
