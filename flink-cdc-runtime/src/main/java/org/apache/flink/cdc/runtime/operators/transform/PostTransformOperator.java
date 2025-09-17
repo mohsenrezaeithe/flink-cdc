@@ -31,6 +31,7 @@ import org.apache.flink.cdc.common.event.TableId;
 import org.apache.flink.cdc.common.schema.Schema;
 import org.apache.flink.cdc.common.schema.Selectors;
 import org.apache.flink.cdc.common.udf.UserDefinedFunctionContext;
+import org.apache.flink.cdc.common.utils.Preconditions;
 import org.apache.flink.cdc.common.utils.SchemaMergingUtils;
 import org.apache.flink.cdc.common.utils.SchemaUtils;
 import org.apache.flink.cdc.runtime.operators.transform.converter.PostTransformConverters;
@@ -56,8 +57,6 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-
-import static org.apache.flink.cdc.common.utils.Preconditions.checkNotNull;
 
 /**
  * A data process function that performs column filtering, calculated column evaluation & final
@@ -237,7 +236,8 @@ public class PostTransformOperator extends AbstractStreamOperator<Event>
     private Optional<Event> processSchemaChangeEvent(
             SchemaChangeEvent event, List<PostTransformer> effectiveTransformers) {
         TableId tableId = event.tableId();
-        PostTransformChangeInfo info = checkNotNull(postTransformInfoMap.get(tableId));
+        PostTransformChangeInfo info =
+                Preconditions.checkNotNull(postTransformInfoMap.get(tableId));
 
         // Apply schema change event to the pre-transformed schema
         Schema prevPreSchema = info.getPreTransformedSchema();
@@ -275,7 +275,8 @@ public class PostTransformOperator extends AbstractStreamOperator<Event>
     private Optional<Event> processDataChangeEvent(
             DataChangeEvent event, List<PostTransformer> effectiveTransformers) {
         TableId tableId = event.tableId();
-        PostTransformChangeInfo info = checkNotNull(postTransformInfoMap.get(tableId));
+        PostTransformChangeInfo info =
+                Preconditions.checkNotNull(postTransformInfoMap.get(tableId));
 
         // Prepare transform context
         TransformContext context = new TransformContext();

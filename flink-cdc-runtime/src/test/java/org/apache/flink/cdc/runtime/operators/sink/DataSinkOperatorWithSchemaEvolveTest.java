@@ -32,6 +32,7 @@ import org.apache.flink.cdc.common.types.RowType;
 import org.apache.flink.cdc.runtime.operators.schema.regular.event.SchemaChangeResponse;
 import org.apache.flink.cdc.runtime.testutils.operators.RegularEventOperatorTestHarness;
 import org.apache.flink.cdc.runtime.typeutils.BinaryRecordDataGenerator;
+import org.apache.flink.streaming.runtime.operators.sink.DataSinkWriterOperator;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
 import org.assertj.core.api.Assertions;
