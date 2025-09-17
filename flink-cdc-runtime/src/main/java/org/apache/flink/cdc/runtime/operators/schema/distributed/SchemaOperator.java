@@ -38,6 +38,8 @@ import org.apache.flink.cdc.runtime.partitioning.PartitioningEvent;
 import org.apache.flink.runtime.jobgraph.tasks.TaskOperatorEventGateway;
 import org.apache.flink.runtime.operators.coordination.CoordinationRequest;
 import org.apache.flink.runtime.operators.coordination.CoordinationResponse;
+import org.apache.flink.shaded.guava32.com.google.common.collect.HashBasedTable;
+import org.apache.flink.shaded.guava32.com.google.common.collect.Table;
 import org.apache.flink.streaming.api.graph.StreamConfig;
 import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
@@ -45,10 +47,6 @@ import org.apache.flink.streaming.api.operators.Output;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.runtime.tasks.StreamTask;
 import org.apache.flink.util.SerializedValue;
-
-import org.apache.flink.shaded.guava31.com.google.common.collect.HashBasedTable;
-import org.apache.flink.shaded.guava31.com.google.common.collect.Table;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

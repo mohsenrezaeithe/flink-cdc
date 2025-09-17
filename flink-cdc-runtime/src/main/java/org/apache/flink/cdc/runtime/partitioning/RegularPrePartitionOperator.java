@@ -32,14 +32,13 @@ import org.apache.flink.cdc.runtime.serializer.event.EventSerializer;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.jobgraph.tasks.TaskOperatorEventGateway;
 import org.apache.flink.runtime.state.StateSnapshotContext;
+import org.apache.flink.shaded.guava32.com.google.common.cache.CacheBuilder;
+import org.apache.flink.shaded.guava32.com.google.common.cache.CacheLoader;
+import org.apache.flink.shaded.guava32.com.google.common.cache.LoadingCache;
 import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
 import org.apache.flink.streaming.api.operators.ChainingStrategy;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
-
-import org.apache.flink.shaded.guava31.com.google.common.cache.CacheBuilder;
-import org.apache.flink.shaded.guava31.com.google.common.cache.CacheLoader;
-import org.apache.flink.shaded.guava31.com.google.common.cache.LoadingCache;
 
 import java.io.Serializable;
 import java.time.Duration;
