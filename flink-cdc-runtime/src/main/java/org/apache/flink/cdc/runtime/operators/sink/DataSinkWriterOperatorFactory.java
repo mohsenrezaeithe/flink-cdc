@@ -26,7 +26,8 @@ import org.apache.flink.streaming.api.operators.AbstractStreamOperatorFactory;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperatorFactory;
 import org.apache.flink.streaming.api.operators.StreamOperator;
 import org.apache.flink.streaming.api.operators.StreamOperatorParameters;
-import org.apache.flink.streaming.api.operators.YieldingOperatorFactory;
+import org.apache.flink.streaming.runtime.operators.sink.BatchDataSinkWriterOperator;
+import org.apache.flink.streaming.runtime.operators.sink.DataSinkWriterOperator;
 
 /** Operator factory for {@link DataSinkWriterOperator}. */
 @Internal

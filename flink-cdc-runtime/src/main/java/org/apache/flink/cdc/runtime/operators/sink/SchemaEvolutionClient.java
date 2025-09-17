@@ -28,6 +28,7 @@ import org.apache.flink.cdc.runtime.operators.schema.common.event.SinkWriterRegi
 import org.apache.flink.cdc.runtime.operators.schema.regular.SchemaOperator;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.jobgraph.tasks.TaskOperatorEventGateway;
+import org.apache.flink.streaming.runtime.operators.sink.DataSinkWriterOperator;
 import org.apache.flink.util.SerializedValue;
 
 import java.io.IOException;
