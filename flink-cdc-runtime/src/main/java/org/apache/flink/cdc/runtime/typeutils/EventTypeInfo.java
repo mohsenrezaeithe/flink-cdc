@@ -17,7 +17,7 @@
 
 package org.apache.flink.cdc.runtime.typeutils;
 
-import org.apache.flink.api.common.ExecutionConfig;
+import org.apache.flink.api.common.serialization.SerializerConfig;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.cdc.common.event.Event;
@@ -59,7 +59,7 @@ public class EventTypeInfo extends TypeInformation<Event> {
     }
 
     @Override
-    public TypeSerializer<Event> createSerializer(ExecutionConfig config) {
+    public TypeSerializer<Event> createSerializer(SerializerConfig config) {
         return EventSerializer.INSTANCE;
     }
 

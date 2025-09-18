@@ -17,6 +17,7 @@
 
 package org.apache.flink.cdc.connectors.db2.source.fetch;
 
+import org.apache.flink.cdc.connectors.base.config.JdbcSourceConfig;
 import org.apache.flink.cdc.connectors.base.source.meta.split.SnapshotSplit;
 import org.apache.flink.cdc.connectors.base.source.meta.split.StreamSplit;
 import org.apache.flink.cdc.connectors.base.source.reader.external.AbstractScanFetchTask;
@@ -57,14 +58,14 @@ import static org.apache.flink.cdc.connectors.db2.source.utils.Db2Utils.buildSpl
 import static org.apache.flink.cdc.connectors.db2.source.utils.Db2Utils.readTableSplitDataStatement;
 
 /** The task to work for fetching data of Db2 table snapshot split. */
-public class Db2ScanFetchTask extends AbstractScanFetchTask {
+public class Db2ScanFetchTask extends AbstractScanFetchTask<JdbcSourceConfig> {
 
     public Db2ScanFetchTask(SnapshotSplit split) {
         super(split);
     }
 
     @Override
-    protected void executeDataSnapshot(Context context) throws Exception {
+    protected void executeDataSnapshot(Context<JdbcSourceConfig> context) throws Exception {
         Db2SourceFetchTaskContext sourceFetchContext = (Db2SourceFetchTaskContext) context;
         Db2SnapshotSplitReadTask snapshotSplitReadTask =
                 new Db2SnapshotSplitReadTask(

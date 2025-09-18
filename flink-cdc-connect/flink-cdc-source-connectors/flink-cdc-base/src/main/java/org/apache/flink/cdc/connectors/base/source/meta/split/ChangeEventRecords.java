@@ -37,7 +37,7 @@ public final class ChangeEventRecords implements RecordsWithSplitIds<SourceRecor
 
     public ChangeEventRecords(
             @Nullable String splitId,
-            @Nullable Iterator recordsForSplit,
+            @Nullable Iterator<SourceRecords> recordsForSplit,
             Set<String> finishedSnapshotSplits) {
         this.splitId = splitId;
         this.recordsForSplit = recordsForSplit;

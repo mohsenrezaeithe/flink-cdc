@@ -19,23 +19,19 @@ package org.apache.flink.cdc.connectors.postgres.source.reader;
 
 import org.apache.flink.api.connector.source.SourceEvent;
 import org.apache.flink.cdc.common.annotation.Experimental;
-import org.apache.flink.cdc.connectors.base.config.SourceConfig;
+import org.apache.flink.cdc.connectors.base.config.JdbcSourceConfig;
 import org.apache.flink.cdc.connectors.base.dialect.DataSourceDialect;
 import org.apache.flink.cdc.connectors.base.source.meta.events.LatestFinishedSplitsNumberEvent;
-import org.apache.flink.cdc.connectors.base.source.meta.split.SnapshotSplit;
-import org.apache.flink.cdc.connectors.base.source.meta.split.SourceSplitBase;
-import org.apache.flink.cdc.connectors.base.source.meta.split.SourceSplitSerializer;
-import org.apache.flink.cdc.connectors.base.source.meta.split.SourceSplitState;
-import org.apache.flink.cdc.connectors.base.source.meta.split.StreamSplit;
+import org.apache.flink.cdc.connectors.base.source.meta.split.*;
 import org.apache.flink.cdc.connectors.base.source.reader.IncrementalSourceReaderContext;
 import org.apache.flink.cdc.connectors.base.source.reader.IncrementalSourceReaderWithCommit;
+import org.apache.flink.cdc.connectors.base.source.reader.IncrementalSourceSplitReader;
 import org.apache.flink.cdc.connectors.postgres.source.PostgresDialect;
 import org.apache.flink.cdc.connectors.postgres.source.config.PostgresSourceConfig;
 import org.apache.flink.cdc.connectors.postgres.source.events.OffsetCommitAckEvent;
 import org.apache.flink.cdc.connectors.postgres.source.events.OffsetCommitEvent;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.connector.base.source.reader.RecordEmitter;
-import org.apache.flink.connector.base.source.reader.synchronization.FutureCompletingBlockingQueue;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -53,7 +49,8 @@ import java.util.function.Supplier;
  * added tables' snapshot splits are finished.
  */
 @Experimental
-public class PostgresSourceReader extends IncrementalSourceReaderWithCommit {
+public class PostgresSourceReader<T>
+        extends IncrementalSourceReaderWithCommit<T, JdbcSourceConfig> {
     private static final Logger LOG = LoggerFactory.getLogger(PostgresSourceReader.class);
 
     /** whether to commit offset. */
@@ -63,16 +60,14 @@ public class PostgresSourceReader extends IncrementalSourceReaderWithCommit {
     private final int lsnCommitCheckpointsDelay;
 
     public PostgresSourceReader(
-            FutureCompletingBlockingQueue elementQueue,
-            Supplier supplier,
-            RecordEmitter recordEmitter,
+            Supplier<IncrementalSourceSplitReader<JdbcSourceConfig>> supplier,
+            RecordEmitter<SourceRecords, T, SourceSplitState> recordEmitter,
             Configuration config,
             IncrementalSourceReaderContext incrementalSourceReaderContext,
-            SourceConfig sourceConfig,
+            JdbcSourceConfig sourceConfig,
             SourceSplitSerializer sourceSplitSerializer,
-            DataSourceDialect dialect) {
+            DataSourceDialect<JdbcSourceConfig> dialect) {
         super(
-                elementQueue,
                 supplier,
                 recordEmitter,
                 config,
@@ -137,10 +132,10 @@ public class PostgresSourceReader extends IncrementalSourceReaderWithCommit {
     }
 
     @Override
-    protected void onSplitFinished(Map finishedSplitIds) {
+    protected void onSplitFinished(Map<String, SourceSplitState> finishedSplitIds) {
         super.onSplitFinished(finishedSplitIds);
-        for (Object splitState : finishedSplitIds.values()) {
-            SourceSplitBase sourceSplit = ((SourceSplitState) splitState).toSourceSplit();
+        for (SourceSplitState splitState : finishedSplitIds.values()) {
+            SourceSplitBase sourceSplit = splitState.toSourceSplit();
             if (sourceSplit.isStreamSplit()) {
                 StreamSplit streamSplit = sourceSplit.asStreamSplit();
                 if (this.sourceConfig.getStartupOptions().isSnapshotOnly()

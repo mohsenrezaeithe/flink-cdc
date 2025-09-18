@@ -69,7 +69,7 @@ public class CustomPostgresSchema {
 
     public Map<TableId, TableChange> getTableSchema(List<TableId> tableIds) {
         // read schema from cache first
-        Map<TableId, TableChange> tableChanges = new HashMap();
+        Map<TableId, TableChange> tableChanges = new HashMap<>();
 
         List<TableId> unMatchTableIds = new ArrayList<>();
         for (TableId tableId : tableIds) {

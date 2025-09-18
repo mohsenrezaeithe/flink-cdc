@@ -70,7 +70,7 @@ public class ConfigurationUtils {
             return Class.forName("org.apache.flink.core.execution.RestoreMode");
         } catch (ClassNotFoundException ignored) {
             try {
-                return Class.forName("org.apache.flink.runtime.jobgraph.RestoreMode");
+                return Class.forName("org.apache.flink.core.execution.RecoveryClaimMode");
             } catch (ClassNotFoundException e) {
                 throw new RuntimeException(e);
             }

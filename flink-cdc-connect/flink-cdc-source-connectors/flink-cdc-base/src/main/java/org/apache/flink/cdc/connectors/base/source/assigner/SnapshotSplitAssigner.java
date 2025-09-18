@@ -271,7 +271,7 @@ public class SnapshotSplitAssigner<C extends SourceConfig> implements SplitAssig
                     LOG.info("Enumerator remove tables after restart: {}", tablesToRemove);
                     remainingSplits.removeIf(split -> tablesToRemove.contains(split.getTableId()));
                     remainingTables.removeAll(tablesToRemove);
-                    alreadyProcessedTables.removeIf(tableId -> tablesToRemove.contains(tableId));
+                    alreadyProcessedTables.removeIf(tablesToRemove::contains);
                 }
 
                 // case 2: there are new tables to add
@@ -689,9 +689,9 @@ public class SnapshotSplitAssigner<C extends SourceConfig> implements SplitAssig
         }
     }
 
-    private static ChunkSplitter createChunkSplitter(
-            SourceConfig sourceConfig,
-            DataSourceDialect dataSourceDialect,
+    private static <C extends SourceConfig> ChunkSplitter createChunkSplitter(
+            C sourceConfig,
+            DataSourceDialect<C> dataSourceDialect,
             ChunkSplitterState chunkSplitterState) {
         TableId tableId = chunkSplitterState.getCurrentSplittingTableId();
         return dataSourceDialect.createChunkSplitter(

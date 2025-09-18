@@ -47,8 +47,8 @@ public class MapDataSerializer extends TypeSerializer<MapData> {
     private final DataType keyType;
     private final DataType valueType;
 
-    private final TypeSerializer keySerializer;
-    private final TypeSerializer valueSerializer;
+    private final TypeSerializer<MapData> keySerializer;
+    private final TypeSerializer<MapData> valueSerializer;
 
     private final ArrayData.ElementGetter keyGetter;
     private final ArrayData.ElementGetter valueGetter;
@@ -69,8 +69,8 @@ public class MapDataSerializer extends TypeSerializer<MapData> {
     private MapDataSerializer(
             DataType keyType,
             DataType valueType,
-            TypeSerializer keySerializer,
-            TypeSerializer valueSerializer) {
+            TypeSerializer<MapData> keySerializer,
+            TypeSerializer<MapData> valueSerializer) {
         this.keyType = keyType;
         this.valueType = valueType;
 
@@ -232,12 +232,12 @@ public class MapDataSerializer extends TypeSerializer<MapData> {
     }
 
     @VisibleForTesting
-    public TypeSerializer getKeySerializer() {
+    TypeSerializer<MapData> getKeySerializer() {
         return keySerializer;
     }
 
     @VisibleForTesting
-    public TypeSerializer getValueSerializer() {
+    TypeSerializer<MapData> getValueSerializer() {
         return valueSerializer;
     }
 
@@ -254,8 +254,8 @@ public class MapDataSerializer extends TypeSerializer<MapData> {
         private DataType keyType;
         private DataType valueType;
 
-        private TypeSerializer keySerializer;
-        private TypeSerializer valueSerializer;
+        private TypeSerializer<MapData> keySerializer;
+        private TypeSerializer<MapData> valueSerializer;
 
         @SuppressWarnings("unused")
         public MapDataSerializerSnapshot() {
@@ -263,7 +263,10 @@ public class MapDataSerializer extends TypeSerializer<MapData> {
         }
 
         MapDataSerializerSnapshot(
-                DataType keyT, DataType valueT, TypeSerializer keySer, TypeSerializer valueSer) {
+                DataType keyT,
+                DataType valueT,
+                TypeSerializer<MapData> keySer,
+                TypeSerializer<MapData> valueSer) {
             this.keyType = keyT;
             this.valueType = valueT;
 
@@ -308,12 +311,13 @@ public class MapDataSerializer extends TypeSerializer<MapData> {
 
         @Override
         public TypeSerializerSchemaCompatibility<MapData> resolveSchemaCompatibility(
-                TypeSerializer<MapData> newSerializer) {
-            if (!(newSerializer instanceof MapDataSerializer)) {
+                TypeSerializerSnapshot<MapData> serializerSnapshot) {
+            final TypeSerializer<MapData> serializer = serializerSnapshot.restoreSerializer();
+            if (!(serializer instanceof MapDataSerializer)) {
                 return TypeSerializerSchemaCompatibility.incompatible();
             }
 
-            MapDataSerializer newMapDataSerializer = (MapDataSerializer) newSerializer;
+            MapDataSerializer newMapDataSerializer = (MapDataSerializer) serializer;
             if (!keyType.equals(newMapDataSerializer.keyType)
                     || !valueType.equals(newMapDataSerializer.valueType)
                     || !keySerializer.equals(newMapDataSerializer.keySerializer)

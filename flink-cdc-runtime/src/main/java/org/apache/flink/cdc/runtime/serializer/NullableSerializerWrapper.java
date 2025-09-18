@@ -109,7 +109,7 @@ public class NullableSerializerWrapper<T> extends TypeSerializer<T> {
             return false;
         }
 
-        NullableSerializerWrapper that = (NullableSerializerWrapper) o;
+        NullableSerializerWrapper<?> that = (NullableSerializerWrapper<?>) o;
         return innerSerializer.equals(that.innerSerializer);
     }
 
@@ -174,13 +174,14 @@ public class NullableSerializerWrapper<T> extends TypeSerializer<T> {
 
         @Override
         public TypeSerializerSchemaCompatibility<T> resolveSchemaCompatibility(
-                TypeSerializer<T> newSerializer) {
-            if (!(newSerializer instanceof NullableSerializerWrapper)) {
+                TypeSerializerSnapshot<T> serializerSnapshot) {
+            final TypeSerializer<T> serializer = serializerSnapshot.restoreSerializer();
+            if (!(serializer instanceof NullableSerializerWrapper)) {
                 return TypeSerializerSchemaCompatibility.incompatible();
             }
 
             NullableSerializerWrapper<T> newNullableSerializerWrapper =
-                    (NullableSerializerWrapper<T>) newSerializer;
+                    (NullableSerializerWrapper<T>) serializer;
             if (!innerSerializer.equals(newNullableSerializerWrapper.innerSerializer)) {
                 return TypeSerializerSchemaCompatibility.incompatible();
             } else {

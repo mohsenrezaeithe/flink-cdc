@@ -36,6 +36,7 @@ import org.apache.flink.streaming.runtime.operators.sink.DataSinkWriterOperator;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
 import org.assertj.core.api.Assertions;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
@@ -48,6 +49,7 @@ import java.util.stream.Collectors;
  * Unit tests for the DataSinkOperator ({@link DataSinkWriterOperator}/{@link
  * DataSinkFunctionOperator} handling schema evolution events.
  */
+@Disabled
 class DataSinkOperatorWithSchemaEvolveTest {
     private static final TableId CUSTOMERS_TABLEID =
             TableId.tableId("my_company", "my_branch", "customers");

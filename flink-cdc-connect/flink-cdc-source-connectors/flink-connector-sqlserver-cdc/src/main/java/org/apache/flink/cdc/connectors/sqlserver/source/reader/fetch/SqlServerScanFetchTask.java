@@ -17,6 +17,7 @@
 
 package org.apache.flink.cdc.connectors.sqlserver.source.reader.fetch;
 
+import org.apache.flink.cdc.connectors.base.config.JdbcSourceConfig;
 import org.apache.flink.cdc.connectors.base.source.meta.split.SnapshotSplit;
 import org.apache.flink.cdc.connectors.base.source.meta.split.StreamSplit;
 import org.apache.flink.cdc.connectors.base.source.reader.external.AbstractScanFetchTask;
@@ -56,14 +57,14 @@ import static org.apache.flink.cdc.connectors.sqlserver.source.utils.SqlServerUt
 import static org.apache.flink.cdc.connectors.sqlserver.source.utils.SqlServerUtils.readTableSplitDataStatement;
 
 /** The task to work for fetching data of SqlServer table snapshot split. */
-public class SqlServerScanFetchTask extends AbstractScanFetchTask {
+public class SqlServerScanFetchTask extends AbstractScanFetchTask<JdbcSourceConfig> {
 
     public SqlServerScanFetchTask(SnapshotSplit split) {
         super(split);
     }
 
     @Override
-    protected void executeDataSnapshot(Context context) throws Exception {
+    protected void executeDataSnapshot(Context<JdbcSourceConfig> context) throws Exception {
         SqlServerSourceFetchTaskContext sourceFetchContext =
                 (SqlServerSourceFetchTaskContext) context;
         taskRunning = true;
@@ -93,8 +94,8 @@ public class SqlServerScanFetchTask extends AbstractScanFetchTask {
     }
 
     @Override
-    protected void executeBackfillTask(Context context, StreamSplit backfillStreamSplit)
-            throws Exception {
+    protected void executeBackfillTask(
+            Context<JdbcSourceConfig> context, StreamSplit backfillStreamSplit) throws Exception {
         SqlServerSourceFetchTaskContext sourceFetchContext =
                 (SqlServerSourceFetchTaskContext) context;
         final SqlServerOffsetContext.Loader loader =

@@ -27,7 +27,7 @@ import org.apache.flink.core.memory.DataOutputView;
 import java.io.IOException;
 
 /** Serializer for {@link DecimalData}. */
-public final class DecimalDataSerializer extends TypeSerializer<DecimalData> {
+public class DecimalDataSerializer extends TypeSerializer<DecimalData> {
 
     private static final long serialVersionUID = 1L;
 
@@ -180,12 +180,13 @@ public final class DecimalDataSerializer extends TypeSerializer<DecimalData> {
 
         @Override
         public TypeSerializerSchemaCompatibility<DecimalData> resolveSchemaCompatibility(
-                TypeSerializer<DecimalData> newSerializer) {
-            if (!(newSerializer instanceof DecimalDataSerializer)) {
+                TypeSerializerSnapshot<DecimalData> serializerSnapshot) {
+            final TypeSerializer<DecimalData> serializer = serializerSnapshot.restoreSerializer();
+            if (!(serializer instanceof DecimalDataSerializer)) {
                 return TypeSerializerSchemaCompatibility.incompatible();
             }
 
-            DecimalDataSerializer newDecimalDataSerializer = (DecimalDataSerializer) newSerializer;
+            DecimalDataSerializer newDecimalDataSerializer = (DecimalDataSerializer) serializer;
             if (previousPrecision != newDecimalDataSerializer.precision
                     || previousScale != newDecimalDataSerializer.scale) {
                 return TypeSerializerSchemaCompatibility.incompatible();

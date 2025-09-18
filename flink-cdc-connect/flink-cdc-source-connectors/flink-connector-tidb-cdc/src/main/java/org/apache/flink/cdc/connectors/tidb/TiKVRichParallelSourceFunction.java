@@ -17,6 +17,7 @@
 
 package org.apache.flink.cdc.connectors.tidb;
 
+import org.apache.flink.api.common.functions.OpenContext;
 import org.apache.flink.api.common.state.CheckpointListener;
 import org.apache.flink.api.common.state.ListState;
 import org.apache.flink.api.common.state.ListStateDescriptor;
@@ -26,12 +27,11 @@ import org.apache.flink.api.java.typeutils.ResultTypeQueryable;
 import org.apache.flink.cdc.connectors.tidb.metrics.TiDBSourceMetrics;
 import org.apache.flink.cdc.connectors.tidb.table.StartupMode;
 import org.apache.flink.cdc.connectors.tidb.table.utils.TableKeyRangeUtils;
-import org.apache.flink.configuration.Configuration;
 import org.apache.flink.metrics.MetricGroup;
 import org.apache.flink.runtime.state.FunctionInitializationContext;
 import org.apache.flink.runtime.state.FunctionSnapshotContext;
 import org.apache.flink.streaming.api.checkpoint.CheckpointedFunction;
-import org.apache.flink.streaming.api.functions.source.RichParallelSourceFunction;
+import org.apache.flink.streaming.api.functions.source.legacy.RichParallelSourceFunction;
 import org.apache.flink.util.Collector;
 import org.apache.flink.util.Preconditions;
 
@@ -117,7 +117,7 @@ public class TiKVRichParallelSourceFunction<T> extends RichParallelSourceFunctio
     }
 
     @Override
-    public void open(final Configuration config) throws Exception {
+    public void open(final OpenContext config) throws Exception {
         super.open(config);
         session = TiSession.create(tiConf);
         TiTableInfo tableInfo = session.getCatalog().getTable(database, tableName);
@@ -129,8 +129,8 @@ public class TiKVRichParallelSourceFunction<T> extends RichParallelSourceFunctio
         keyRange =
                 TableKeyRangeUtils.getTableKeyRange(
                         tableId,
-                        getRuntimeContext().getNumberOfParallelSubtasks(),
-                        getRuntimeContext().getIndexOfThisSubtask());
+                        getRuntimeContext().getTaskInfo().getNumberOfParallelSubtasks(),
+                        getRuntimeContext().getTaskInfo().getIndexOfThisSubtask());
         cdcClient = new CDCClient(session, keyRange);
         prewrites = new TreeMap<>();
         commits = new TreeMap<>();
@@ -147,7 +147,7 @@ public class TiKVRichParallelSourceFunction<T> extends RichParallelSourceFunctio
                 new ThreadFactoryBuilder()
                         .setNameFormat(
                                 "tidb-source-function-"
-                                        + getRuntimeContext().getIndexOfThisSubtask())
+                                        + getRuntimeContext().getTaskInfo().getIndexOfThisSubtask())
                         .build();
         executorService = Executors.newSingleThreadExecutor(threadFactory);
         final MetricGroup metricGroup = getRuntimeContext().getMetricGroup();
@@ -196,7 +196,7 @@ public class TiKVRichParallelSourceFunction<T> extends RichParallelSourceFunctio
                 prewrites.remove(RowKeyWithTs.ofStart(row));
                 break;
             default:
-                LOG.warn("Unsupported row type:" + row.getType());
+                LOG.warn("Unsupported row type:{}", row.getType());
         }
     }
 
@@ -255,13 +255,13 @@ public class TiKVRichParallelSourceFunction<T> extends RichParallelSourceFunctio
                 handleRow(row);
             }
             resolvedTs = cdcClient.getMaxResolvedTs();
-            if (commits.size() > 0) {
+            if (!commits.isEmpty()) {
                 flushRows(resolvedTs);
             }
         }
     }
 
-    protected void flushRows(final long timestamp) throws Exception {
+    protected void flushRows(final long timestamp) {
         Preconditions.checkState(sourceContext != null, "sourceContext shouldn't be null");
         synchronized (sourceContext) {
             while (!commits.isEmpty() && commits.firstKey().timestamp <= timestamp) {
@@ -326,7 +326,7 @@ public class TiKVRichParallelSourceFunction<T> extends RichParallelSourceFunctio
     }
 
     @Override
-    public void notifyCheckpointComplete(long checkpointId) throws Exception {
+    public void notifyCheckpointComplete(long checkpointId) {
         // do nothing
     }
 

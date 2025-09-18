@@ -1017,9 +1017,7 @@ class FlinkPipelineUdfITCase {
 
     private static Stream<Arguments> testParams() {
         return Stream.of(
-                arguments(ValuesDataSink.SinkApi.SINK_FUNCTION, "java"),
                 arguments(ValuesDataSink.SinkApi.SINK_V2, "java"),
-                arguments(ValuesDataSink.SinkApi.SINK_FUNCTION, "scala"),
                 arguments(ValuesDataSink.SinkApi.SINK_V2, "scala"));
     }
 }

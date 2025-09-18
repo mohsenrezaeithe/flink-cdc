@@ -20,7 +20,6 @@ package org.apache.flink.cdc.connectors.base.source.reader.external;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.cdc.connectors.base.WatermarkDispatcher;
 import org.apache.flink.cdc.connectors.base.config.JdbcSourceConfig;
-import org.apache.flink.cdc.connectors.base.config.SourceConfig;
 import org.apache.flink.cdc.connectors.base.dialect.JdbcDataSourceDialect;
 import org.apache.flink.cdc.connectors.base.utils.SourceRecordUtils;
 import org.apache.flink.table.types.logical.RowType;
@@ -46,7 +45,7 @@ import java.util.stream.Collectors;
 
 /** The context for fetch task that fetching data of snapshot split from JDBC data source. */
 @Internal
-public abstract class JdbcSourceFetchTaskContext implements FetchTask.Context {
+public abstract class JdbcSourceFetchTaskContext implements FetchTask.Context<JdbcSourceConfig> {
 
     protected final JdbcSourceConfig sourceConfig;
     protected final JdbcDataSourceDialect dataSourceDialect;
@@ -133,22 +132,20 @@ public abstract class JdbcSourceFetchTaskContext implements FetchTask.Context {
                             Instant fetchTs =
                                     Instant.ofEpochMilli(
                                             value.getInt64(Envelope.FieldName.TIMESTAMP));
-                            SourceRecord sourceRecord =
-                                    new SourceRecord(
-                                            record.sourcePartition(),
-                                            record.sourceOffset(),
-                                            record.topic(),
-                                            record.kafkaPartition(),
-                                            record.keySchema(),
-                                            record.key(),
-                                            record.valueSchema(),
-                                            envelope.read(updateAfter, source, fetchTs));
-                            return sourceRecord;
+                            return new SourceRecord(
+                                    record.sourcePartition(),
+                                    record.sourceOffset(),
+                                    record.topic(),
+                                    record.kafkaPartition(),
+                                    record.keySchema(),
+                                    record.key(),
+                                    record.valueSchema(),
+                                    envelope.read(updateAfter, source, fetchTs));
                         })
                 .collect(Collectors.toList());
     }
 
-    public SourceConfig getSourceConfig() {
+    public JdbcSourceConfig getSourceConfig() {
         return sourceConfig;
     }
 
@@ -174,7 +171,7 @@ public abstract class JdbcSourceFetchTaskContext implements FetchTask.Context {
 
     public abstract ErrorHandler getErrorHandler();
 
-    public abstract EventDispatcher getEventDispatcher();
+    public abstract EventDispatcher<?, ?> getEventDispatcher();
 
     public abstract WatermarkDispatcher getWaterMarkDispatcher();
 

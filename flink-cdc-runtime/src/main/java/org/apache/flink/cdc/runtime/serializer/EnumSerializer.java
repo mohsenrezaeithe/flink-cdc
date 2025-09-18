@@ -39,7 +39,7 @@ import static org.apache.flink.cdc.common.utils.Preconditions.checkNotNull;
 import static org.apache.flink.cdc.common.utils.Preconditions.checkState;
 
 /** {@link TypeSerializer} for Java enums. */
-public final class EnumSerializer<T extends Enum<T>> extends TypeSerializer<T> {
+public class EnumSerializer<T extends Enum<T>> extends TypeSerializer<T> {
 
     private static final long serialVersionUID = 1L;
 
@@ -240,12 +240,13 @@ public final class EnumSerializer<T extends Enum<T>> extends TypeSerializer<T> {
 
         @Override
         public TypeSerializerSchemaCompatibility<T> resolveSchemaCompatibility(
-                TypeSerializer<T> newSerializer) {
-            if (!(newSerializer instanceof EnumSerializer)) {
+                TypeSerializerSnapshot<T> serializerSnapshot) {
+            final TypeSerializer<T> serializer = serializerSnapshot.restoreSerializer();
+            if (!(serializer instanceof EnumSerializer)) {
                 return TypeSerializerSchemaCompatibility.incompatible();
             }
 
-            EnumSerializer<T> newEnumSerializer = (EnumSerializer<T>) newSerializer;
+            EnumSerializer<T> newEnumSerializer = (EnumSerializer<T>) serializer;
             if (!enumClass.equals(newEnumSerializer.enumClass)) {
                 return TypeSerializerSchemaCompatibility.incompatible();
             }

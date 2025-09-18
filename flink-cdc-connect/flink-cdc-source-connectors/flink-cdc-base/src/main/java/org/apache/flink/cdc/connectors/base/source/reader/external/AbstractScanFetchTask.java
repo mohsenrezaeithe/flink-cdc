@@ -33,7 +33,8 @@ import org.slf4j.LoggerFactory;
 import java.util.ArrayList;
 
 /** An abstract {@link FetchTask} implementation to read snapshot split. */
-public abstract class AbstractScanFetchTask implements FetchTask {
+public abstract class AbstractScanFetchTask<C extends SourceConfig>
+        implements FetchTask<SourceSplitBase, C> {
 
     private static final Logger LOG = LoggerFactory.getLogger(AbstractScanFetchTask.class);
     protected volatile boolean taskRunning = false;
@@ -46,11 +47,11 @@ public abstract class AbstractScanFetchTask implements FetchTask {
     }
 
     @Override
-    public void execute(Context context) throws Exception {
+    public void execute(Context<C> context) throws Exception {
         LOG.info("Execute ScanFetchTask for split: {}", snapshotSplit);
 
-        DataSourceDialect dialect = context.getDataSourceDialect();
-        SourceConfig sourceConfig = context.getSourceConfig();
+        DataSourceDialect<C> dialect = context.getDataSourceDialect();
+        C sourceConfig = context.getSourceConfig();
 
         taskRunning = true;
 
@@ -125,14 +126,14 @@ public abstract class AbstractScanFetchTask implements FetchTask {
                 0);
     }
 
-    protected abstract void executeBackfillTask(Context context, StreamSplit backfillStreamSplit)
+    protected abstract void executeBackfillTask(Context<C> context, StreamSplit backfillStreamSplit)
             throws Exception;
 
-    protected abstract void executeDataSnapshot(Context context) throws Exception;
+    protected abstract void executeDataSnapshot(Context<C> context) throws Exception;
 
     /** Dispatch low watermark event, which means the beginning of snapshot data. */
     protected void dispatchLowWaterMarkEvent(
-            Context context, SourceSplitBase split, Offset lowWatermark) throws Exception {
+            Context<C> context, SourceSplitBase split, Offset lowWatermark) throws Exception {
         if (context instanceof JdbcSourceFetchTaskContext) {
             ((JdbcSourceFetchTaskContext) context)
                     .getWaterMarkDispatcher()
@@ -145,8 +146,7 @@ public abstract class AbstractScanFetchTask implements FetchTask {
                             WatermarkKind.LOW);
             return;
         }
-        throw new UnsupportedOperationException(
-                "Unsupported Context type: " + context.getClass().toString());
+        throw new UnsupportedOperationException("Unsupported Context type: " + context.getClass());
     }
 
     /**
@@ -154,7 +154,7 @@ public abstract class AbstractScanFetchTask implements FetchTask {
      * backfill data. Data change events between (low_watermark, high_watermark) are snapshot data.
      */
     protected void dispatchHighWaterMarkEvent(
-            Context context, SourceSplitBase split, Offset highWatermark) throws Exception {
+            Context<C> context, SourceSplitBase split, Offset highWatermark) throws Exception {
         if (context instanceof JdbcSourceFetchTaskContext) {
             ((JdbcSourceFetchTaskContext) context)
                     .getWaterMarkDispatcher()
@@ -167,8 +167,7 @@ public abstract class AbstractScanFetchTask implements FetchTask {
                             WatermarkKind.HIGH);
             return;
         }
-        throw new UnsupportedOperationException(
-                "Unsupported Context type: " + context.getClass().toString());
+        throw new UnsupportedOperationException("Unsupported Context type: " + context.getClass());
     }
 
     /**
@@ -177,7 +176,7 @@ public abstract class AbstractScanFetchTask implements FetchTask {
      * snapshot data. Thus, only the intersection of both is exactly-once.
      */
     protected void dispatchEndWaterMarkEvent(
-            Context context, SourceSplitBase split, Offset endWatermark) throws Exception {
+            Context<C> context, SourceSplitBase split, Offset endWatermark) throws Exception {
         if (context instanceof JdbcSourceFetchTaskContext) {
             ((JdbcSourceFetchTaskContext) context)
                     .getWaterMarkDispatcher()
@@ -190,8 +189,7 @@ public abstract class AbstractScanFetchTask implements FetchTask {
                             WatermarkKind.END);
             return;
         }
-        throw new UnsupportedOperationException(
-                "Unsupported Context type: " + context.getClass().toString());
+        throw new UnsupportedOperationException("Unsupported Context type: " + context.getClass());
     }
 
     @Override

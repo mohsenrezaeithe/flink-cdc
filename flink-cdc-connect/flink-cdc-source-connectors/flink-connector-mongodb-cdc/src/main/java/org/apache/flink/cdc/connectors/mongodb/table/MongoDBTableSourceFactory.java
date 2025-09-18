@@ -17,8 +17,14 @@
 
 package org.apache.flink.cdc.connectors.mongodb.table;
 
+import org.apache.flink.api.connector.source.Source;
+import org.apache.flink.api.connector.source.SourceReaderFactory;
 import org.apache.flink.cdc.connectors.base.options.StartupOptions;
+import org.apache.flink.cdc.connectors.base.source.assigner.state.PendingSplitsState;
+import org.apache.flink.cdc.connectors.base.source.meta.split.SourceSplitBase;
 import org.apache.flink.cdc.connectors.base.utils.OptionUtils;
+import org.apache.flink.cdc.connectors.mongodb.source.MongoDBSource;
+import org.apache.flink.cdc.connectors.mongodb.source.MongoDBSourceBuilder;
 import org.apache.flink.configuration.ConfigOption;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.ReadableConfig;
@@ -64,15 +70,15 @@ import static org.apache.flink.cdc.debezium.utils.ResolvedSchemaUtils.getPhysica
 import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
-/** Factory for creating configured instance of {@link MongoDBTableSource}. */
-public class MongoDBTableSourceFactory implements DynamicTableSourceFactory {
+/** Factory for creating configured instance of {@link MongoDBSource}. */
+public class MongoDBTableSourceFactory implements SourceReaderFactory {
 
     private static final String IDENTIFIER = "mongodb-cdc";
 
     private static final String DOCUMENT_ID_FIELD = "_id";
 
     @Override
-    public DynamicTableSource createDynamicTableSource(Context context) {
+    public Source<Object, SourceSplitBase, PendingSplitsState> createDynamicTableSource(Context context) {
         final FactoryUtil.TableFactoryHelper helper =
                 FactoryUtil.createTableFactoryHelper(this, context);
         helper.validate();
@@ -144,36 +150,36 @@ public class MongoDBTableSourceFactory implements DynamicTableSourceFactory {
         checkArgument(physicalSchema.getPrimaryKey().isPresent(), "Primary key must be present");
         checkPrimaryKey(physicalSchema.getPrimaryKey().get(), "Primary key must be _id field");
 
-        OptionUtils.printOptions(IDENTIFIER, ((Configuration) config).toMap());
+        OptionUtils.printOptions(IDENTIFIER, config.toMap());
 
-        return new MongoDBTableSource(
-                physicalSchema,
-                scheme,
-                hosts,
-                username,
-                password,
-                database,
-                collection,
-                connectionOptions,
-                startupOptions,
-                initialSnapshottingQueueSize,
-                initialSnapshottingMaxThreads,
-                initialSnapshottingPipeline,
-                batchSize,
-                pollMaxBatchSize,
-                pollAwaitTimeMillis,
-                heartbeatIntervalMillis,
-                localTimeZone,
-                enableParallelRead,
-                splitMetaGroupSize,
-                splitSizeMB,
-                samplesPerChunk,
-                enableCloseIdleReaders,
-                enableFullDocumentPrePostImage,
-                noCursorTimeout,
-                skipSnapshotBackfill,
-                scanNewlyAddedTableEnabled,
-                assignUnboundedChunkFirst);
+        return MongoDBSource.builder()
+                .scheme(scheme)
+                .hosts(hosts)
+                .username(username)
+                .password(password)
+                .databaseList(database)
+                .collectionList(collection)
+                .connectionOptions(connectionOptions)
+                .startupOptions(startupOptions)
+                .batchSize(batchSize)
+                .pollMaxBatchSize(pollMaxBatchSize)
+                .pollAwaitTimeMillis(pollAwaitTimeMillis)
+                .heartbeatIntervalMillis(heartbeatIntervalMillis)
+                .splitMetaGroupSize(splitMetaGroupSize)
+                .splitSizeMB(splitSizeMB)
+                .samplesPerChunk(samplesPerChunk)
+                .closeIdleReaders(enableCloseIdleReaders)
+                .disableCursorTimeout(noCursorTimeout)
+                .skipSnapshotBackfill(skipSnapshotBackfill)
+                .scanNewlyAddedTableEnabled(scanNewlyAddedTableEnabled)
+                .assignUnboundedChunkFirst(assignUnboundedChunkFirst)
+                .build();
+        /*physicalSchema,*/
+        /*initialSnapshottingQueueSize,
+        initialSnapshottingMaxThreads,
+        initialSnapshottingPipeline,*/
+        /*localTimeZone,
+        enableParallelRead,*/
     }
 
     private void checkPrimaryKey(UniqueConstraint pk, String message) {

@@ -36,7 +36,7 @@ import static org.apache.flink.cdc.common.utils.Preconditions.checkArgument;
 public class BinaryRecordDataGenerator {
 
     private final DataType[] dataTypes;
-    private final TypeSerializer[] serializers;
+    private final TypeSerializer<?>[] serializers;
 
     private transient BinaryRecordData reuseRecordData;
     private transient BinaryRecordDataWriter reuseWriter;
@@ -53,7 +53,7 @@ public class BinaryRecordDataGenerator {
                         .toArray(TypeSerializer[]::new));
     }
 
-    public BinaryRecordDataGenerator(DataType[] dataTypes, TypeSerializer[] serializers) {
+    public BinaryRecordDataGenerator(DataType[] dataTypes, TypeSerializer<?>[] serializers) {
         checkArgument(
                 dataTypes.length == serializers.length,
                 "The types and serializers must have the same length. But types is %s and serializers is %s",

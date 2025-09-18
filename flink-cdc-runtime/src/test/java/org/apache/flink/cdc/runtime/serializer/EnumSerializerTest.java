@@ -82,10 +82,10 @@ class EnumSerializerTest extends TestLogger {
                 .isEqualTo(PublicEnum.PAULA.ordinal());
 
         // reconfigure and verify compatibility
-        EnumSerializer.EnumSerializerSnapshot serializerSnapshot =
-                new EnumSerializer.EnumSerializerSnapshot(PublicEnum.class, mockPreviousOrder);
-        TypeSerializerSchemaCompatibility compatibility =
-                serializerSnapshot.resolveSchemaCompatibility(serializer);
+        EnumSerializer.EnumSerializerSnapshot<PublicEnum> serializerSnapshot =
+                new EnumSerializer.EnumSerializerSnapshot<>(PublicEnum.class, mockPreviousOrder);
+        TypeSerializerSchemaCompatibility<PublicEnum> compatibility =
+                serializerSnapshot.resolveSchemaCompatibility(serializerSnapshot);
         Assertions.assertThat(compatibility.isCompatibleWithReconfiguredSerializer()).isTrue();
 
         // after reconfiguration, the order should be first the original BAR, PAULA, NATHANIEL,
@@ -131,7 +131,7 @@ class EnumSerializerTest extends TestLogger {
         }
 
         TypeSerializerSchemaCompatibility<PublicEnum> compatResult =
-                restoredConfig.resolveSchemaCompatibility(serializer);
+                restoredConfig.resolveSchemaCompatibility(serializer.snapshotConfiguration());
         Assertions.assertThat(compatResult.isCompatibleAsIs()).isTrue();
 
         Assertions.assertThat(serializer.getValueToOrdinal().get(PublicEnum.FOO).intValue())
@@ -190,7 +190,7 @@ class EnumSerializerTest extends TestLogger {
     }
 
     @Test
-    void testSerializeReconfiguredEnumSerializer() throws Exception {
+    void testSerializeReconfiguredEnumSerializer() {
         // mock the previous ordering of enum constants to be BAR, PAULA, NATHANIEL
         PublicEnum[] mockPreviousOrder = {PublicEnum.BAR, PublicEnum.PAULA, PublicEnum.NATHANIEL};
 
@@ -214,10 +214,10 @@ class EnumSerializerTest extends TestLogger {
                 .isEqualTo(PublicEnum.PAULA.ordinal());
 
         // reconfigure and verify compatibility
-        EnumSerializer.EnumSerializerSnapshot serializerSnapshot =
-                new EnumSerializer.EnumSerializerSnapshot(PublicEnum.class, mockPreviousOrder);
-        TypeSerializerSchemaCompatibility compatibility =
-                serializerSnapshot.resolveSchemaCompatibility(serializer);
+        EnumSerializer.EnumSerializerSnapshot<PublicEnum> serializerSnapshot =
+                new EnumSerializer.EnumSerializerSnapshot<>(PublicEnum.class, mockPreviousOrder);
+        TypeSerializerSchemaCompatibility<PublicEnum> compatibility =
+                serializerSnapshot.resolveSchemaCompatibility(serializer.snapshotConfiguration());
         Assertions.assertThat(compatibility.isCompatibleWithReconfiguredSerializer()).isTrue();
 
         // verify that after the serializer was read, the reconfigured constant ordering is
@@ -249,7 +249,7 @@ class EnumSerializerTest extends TestLogger {
         final Class<T> clazz = (Class<T>) data.getClass().getComponentType();
 
         SerializerTestInstance<T> tester =
-                new SerializerTestInstance<T>(new EnumSerializer<T>(clazz), clazz, 4, data) {};
+                new SerializerTestInstance<>(new EnumSerializer<>(clazz), clazz, 4, data) {};
 
         tester.testAll();
     }

@@ -28,11 +28,13 @@ import org.apache.calcite.sql.SqlBasicTypeNameSpec;
 import org.apache.calcite.sql.SqlCharStringLiteral;
 import org.apache.calcite.sql.SqlDataTypeSpec;
 import org.apache.calcite.sql.SqlIdentifier;
+import org.apache.calcite.sql.SqlIntervalQualifier;
 import org.apache.calcite.sql.SqlLiteral;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.sql.SqlNumericLiteral;
 import org.apache.calcite.sql.fun.SqlCase;
+import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.util.NlsString;
 import org.codehaus.commons.compiler.CompileException;
@@ -247,6 +249,19 @@ public class JaninoCompiler {
             }
         } else if (sqlNode instanceof SqlCase) {
             atoms.add(translateSqlCase((SqlCase) sqlNode, udfDescriptors, columnNameMap));
+        } else if (sqlNode instanceof SqlIntervalQualifier) {
+            final SqlNode identifier = SqlIntervalQualifier.asIdentifier(sqlNode);
+
+            // node was an interval qualifier, handle as a string literal
+            if (identifier instanceof SqlIntervalQualifier) {
+                atoms.add(
+                        translateSqlSqlLiteral(
+                                SqlLiteral.createCharString(
+                                        SqlIntervalQualifier.asIdentifier(sqlNode).toString(),
+                                        SqlParserPos.ZERO)));
+            } else {
+                atoms.add(translateSqlIdentifier((SqlIdentifier) identifier, columnNameMap));
+            }
         }
     }
 

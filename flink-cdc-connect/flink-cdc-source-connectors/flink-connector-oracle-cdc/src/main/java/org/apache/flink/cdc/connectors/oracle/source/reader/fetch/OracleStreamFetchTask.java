@@ -19,6 +19,7 @@ package org.apache.flink.cdc.connectors.oracle.source.reader.fetch;
 
 import org.apache.flink.cdc.common.annotation.Internal;
 import org.apache.flink.cdc.connectors.base.WatermarkDispatcher;
+import org.apache.flink.cdc.connectors.base.config.JdbcSourceConfig;
 import org.apache.flink.cdc.connectors.base.source.meta.split.SourceSplitBase;
 import org.apache.flink.cdc.connectors.base.source.meta.split.StreamSplit;
 import org.apache.flink.cdc.connectors.base.source.reader.external.FetchTask;
@@ -41,7 +42,7 @@ import org.slf4j.LoggerFactory;
 
 /** The task to work for fetching data of Oracle table stream split. */
 @Internal
-public class OracleStreamFetchTask implements FetchTask<SourceSplitBase> {
+public class OracleStreamFetchTask implements FetchTask<SourceSplitBase, JdbcSourceConfig> {
 
     private final StreamSplit split;
     private volatile boolean taskRunning = false;
@@ -51,7 +52,7 @@ public class OracleStreamFetchTask implements FetchTask<SourceSplitBase> {
     }
 
     @Override
-    public void execute(Context context) throws Exception {
+    public void execute(Context<JdbcSourceConfig> context) throws Exception {
         OracleSourceFetchTaskContext sourceFetchContext = (OracleSourceFetchTaskContext) context;
         taskRunning = true;
         RedoLogSplitReadTask redoLogSplitReadTask =

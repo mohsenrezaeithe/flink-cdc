@@ -17,6 +17,7 @@
 
 package org.apache.flink.cdc.composer.testsource.source;
 
+import org.apache.flink.api.common.functions.OpenContext;
 import org.apache.flink.cdc.common.data.DecimalData;
 import org.apache.flink.cdc.common.data.LocalZonedTimestampData;
 import org.apache.flink.cdc.common.data.TimeData;
@@ -35,8 +36,7 @@ import org.apache.flink.cdc.common.types.DataType;
 import org.apache.flink.cdc.common.types.DataTypes;
 import org.apache.flink.cdc.common.utils.SchemaUtils;
 import org.apache.flink.cdc.runtime.typeutils.BinaryRecordDataGenerator;
-import org.apache.flink.configuration.Configuration;
-import org.apache.flink.streaming.api.functions.source.RichParallelSourceFunction;
+import org.apache.flink.streaming.api.functions.source.legacy.RichParallelSourceFunction;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -76,11 +76,11 @@ public class DistributedSourceFunction extends RichParallelSourceFunction<Event>
     }
 
     @Override
-    public void open(Configuration parameters) throws Exception {
+    public void open(OpenContext parameters) throws Exception {
         super.open(parameters);
         iotaCounter = 0;
-        subTaskId = getRuntimeContext().getIndexOfThisSubtask();
-        parallelism = getRuntimeContext().getNumberOfParallelSubtasks();
+        subTaskId = getRuntimeContext().getTaskInfo().getIndexOfThisSubtask();
+        parallelism = getRuntimeContext().getTaskInfo().getNumberOfParallelSubtasks();
         if (distributedTables) {
             tables =
                     IntStream.range(0, numOfTables)
@@ -106,10 +106,10 @@ public class DistributedSourceFunction extends RichParallelSourceFunction<Event>
         dummyDataTypes.put(DataTypes.BOOLEAN(), true);
         dummyDataTypes.put(DataTypes.TINYINT(), (byte) 17);
         dummyDataTypes.put(DataTypes.SMALLINT(), (short) 34);
-        dummyDataTypes.put(DataTypes.INT(), (int) 68);
+        dummyDataTypes.put(DataTypes.INT(), 68);
         dummyDataTypes.put(DataTypes.BIGINT(), (long) 136);
         dummyDataTypes.put(DataTypes.FLOAT(), (float) 272.0);
-        dummyDataTypes.put(DataTypes.DOUBLE(), (double) 544.0);
+        dummyDataTypes.put(DataTypes.DOUBLE(), 544.0);
         dummyDataTypes.put(
                 DataTypes.DECIMAL(17, 11),
                 DecimalData.fromBigDecimal(new BigDecimal("1088.000"), 17, 11));

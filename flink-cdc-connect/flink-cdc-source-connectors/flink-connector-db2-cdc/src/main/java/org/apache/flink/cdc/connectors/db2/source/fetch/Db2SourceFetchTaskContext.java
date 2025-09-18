@@ -217,7 +217,7 @@ public class Db2SourceFetchTaskContext extends JdbcSourceFetchTaskContext {
     }
 
     @Override
-    public JdbcSourceEventDispatcher getEventDispatcher() {
+    public JdbcSourceEventDispatcher<Db2Partition> getEventDispatcher() {
         return dispatcher;
     }
 

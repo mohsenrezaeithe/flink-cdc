@@ -30,7 +30,6 @@ import org.apache.flink.runtime.state.StateSnapshotContext;
 import org.apache.flink.streaming.api.graph.StreamConfig;
 import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
 import org.apache.flink.streaming.api.operators.BoundedOneInput;
-import org.apache.flink.streaming.api.operators.ChainingStrategy;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.api.operators.Output;
 import org.apache.flink.streaming.api.watermark.Watermark;
@@ -60,7 +59,6 @@ public class DataSinkOperatorAdapter extends AbstractStreamOperator<Event>
     public DataSinkOperatorAdapter() {
         this.schemaOperatorID = new OperatorID();
         this.processedTableIds = new HashSet<>();
-        this.chainingStrategy = ChainingStrategy.ALWAYS;
     }
 
     @Override
@@ -80,7 +78,8 @@ public class DataSinkOperatorAdapter extends AbstractStreamOperator<Event>
 
     @Override
     public void initializeState(StateInitializationContext context) throws Exception {
-        schemaEvolutionClient.registerSubtask(getRuntimeContext().getIndexOfThisSubtask());
+        schemaEvolutionClient.registerSubtask(
+                getRuntimeContext().getTaskInfo().getIndexOfThisSubtask());
     }
 
     @Override
@@ -150,7 +149,8 @@ public class DataSinkOperatorAdapter extends AbstractStreamOperator<Event>
                             });
         }
         schemaEvolutionClient.notifyFlushSuccess(
-                getRuntimeContext().getIndexOfThisSubtask(), event.getSourceSubTaskId());
+                getRuntimeContext().getTaskInfo().getIndexOfThisSubtask(),
+                event.getSourceSubTaskId());
     }
 
     private void emitLatestSchema(TableId tableId) throws Exception {

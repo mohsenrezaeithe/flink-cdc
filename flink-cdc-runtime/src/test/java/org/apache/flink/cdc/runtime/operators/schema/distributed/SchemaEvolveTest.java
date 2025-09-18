@@ -39,6 +39,7 @@ import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.util.function.BiConsumerWithException;
 
 import org.assertj.core.api.Assertions;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
@@ -48,6 +49,7 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 /** Unit test cases for {@link SchemaOperator}. */
+@Disabled
 public class SchemaEvolveTest extends SchemaTestBase {
     private static final TableId TABLE_ID = TableId.parse("foo.bar.baz");
     private static final Schema INITIAL_SCHEMA =

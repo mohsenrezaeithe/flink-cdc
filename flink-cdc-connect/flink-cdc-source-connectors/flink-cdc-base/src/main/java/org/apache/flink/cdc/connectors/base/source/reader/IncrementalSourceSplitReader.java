@@ -64,10 +64,10 @@ public class IncrementalSourceSplitReader<C extends SourceConfig>
     private final ArrayDeque<StreamSplit> streamSplits;
     private final int subtaskId;
 
-    @Nullable private Fetcher<SourceRecords, SourceSplitBase> currentFetcher;
+    @Nullable private Fetcher<SourceRecords, SourceSplitBase, C> currentFetcher;
 
-    @Nullable private IncrementalSourceScanFetcher reusedScanFetcher;
-    @Nullable private IncrementalSourceStreamFetcher reusedStreamFetcher;
+    @Nullable private IncrementalSourceScanFetcher<C> reusedScanFetcher;
+    @Nullable private IncrementalSourceStreamFetcher<C> reusedStreamFetcher;
 
     @Nullable private String currentSplitId;
     private final DataSourceDialect<C> dataSourceDialect;
@@ -108,7 +108,7 @@ public class IncrementalSourceSplitReader<C extends SourceConfig>
                 && currentFetcher instanceof IncrementalSourceStreamFetcher
                 && context.isStreamSplitReaderSuspended()
                 && !currentFetcher.isFinished()) {
-            ((IncrementalSourceStreamFetcher) currentFetcher).stopReadTask();
+            ((IncrementalSourceStreamFetcher<C>) currentFetcher).stopReadTask();
             LOG.info("Suspend stream reader to wait the stream split update.");
         }
     }
@@ -244,31 +244,31 @@ public class IncrementalSourceSplitReader<C extends SourceConfig>
     private void submitSnapshotSplit(SnapshotSplit snapshotSplit) {
         currentSplitId = snapshotSplit.splitId();
         currentFetcher = getScanFetcher();
-        FetchTask<SourceSplitBase> fetchTask = dataSourceDialect.createFetchTask(snapshotSplit);
-        ((AbstractScanFetchTask) fetchTask).setSnapshotPhaseHooks(snapshotHooks);
+        FetchTask<SourceSplitBase, C> fetchTask = dataSourceDialect.createFetchTask(snapshotSplit);
+        ((AbstractScanFetchTask<C>) fetchTask).setSnapshotPhaseHooks(snapshotHooks);
         currentFetcher.submitTask(fetchTask);
     }
 
     private void submitStreamSplit(StreamSplit streamSplit) {
         currentSplitId = streamSplit.splitId();
         currentFetcher = getStreamFetcher();
-        FetchTask<SourceSplitBase> fetchTask = dataSourceDialect.createFetchTask(streamSplit);
+        FetchTask<SourceSplitBase, C> fetchTask = dataSourceDialect.createFetchTask(streamSplit);
         currentFetcher.submitTask(fetchTask);
     }
 
-    private IncrementalSourceScanFetcher getScanFetcher() {
+    private IncrementalSourceScanFetcher<C> getScanFetcher() {
         if (reusedScanFetcher == null) {
             reusedScanFetcher =
-                    new IncrementalSourceScanFetcher(
+                    new IncrementalSourceScanFetcher<>(
                             dataSourceDialect.createFetchTaskContext(sourceConfig), subtaskId);
         }
         return reusedScanFetcher;
     }
 
-    private IncrementalSourceStreamFetcher getStreamFetcher() {
+    private IncrementalSourceStreamFetcher<C> getStreamFetcher() {
         if (reusedStreamFetcher == null) {
             reusedStreamFetcher =
-                    new IncrementalSourceStreamFetcher(
+                    new IncrementalSourceStreamFetcher<>(
                             dataSourceDialect.createFetchTaskContext(sourceConfig), subtaskId);
         }
         return reusedStreamFetcher;

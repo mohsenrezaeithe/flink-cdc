@@ -17,6 +17,7 @@
 
 package org.apache.flink.cdc.connectors.postgres.source.fetch;
 
+import org.apache.flink.cdc.connectors.base.config.JdbcSourceConfig;
 import org.apache.flink.cdc.connectors.base.source.meta.split.SnapshotSplit;
 import org.apache.flink.cdc.connectors.base.source.meta.split.StreamSplit;
 import org.apache.flink.cdc.connectors.base.source.reader.external.AbstractScanFetchTask;
@@ -61,7 +62,7 @@ import static io.debezium.connector.postgresql.PostgresObjectUtils.waitForReplic
 import static io.debezium.connector.postgresql.Utils.refreshSchema;
 
 /** A {@link FetchTask} implementation for Postgres to read snapshot split. */
-public class PostgresScanFetchTask extends AbstractScanFetchTask {
+public class PostgresScanFetchTask extends AbstractScanFetchTask<JdbcSourceConfig> {
 
     private static final Logger LOG = LoggerFactory.getLogger(PostgresScanFetchTask.class);
 
@@ -70,7 +71,7 @@ public class PostgresScanFetchTask extends AbstractScanFetchTask {
     }
 
     @Override
-    public void execute(Context context) throws Exception {
+    public void execute(Context<JdbcSourceConfig> context) throws Exception {
 
         PostgresSourceFetchTaskContext ctx = (PostgresSourceFetchTaskContext) context;
         PostgresSourceConfig sourceConfig = (PostgresSourceConfig) context.getSourceConfig();
@@ -93,7 +94,7 @@ public class PostgresScanFetchTask extends AbstractScanFetchTask {
     }
 
     @Override
-    protected void executeDataSnapshot(Context context) throws Exception {
+    protected void executeDataSnapshot(Context<JdbcSourceConfig> context) throws Exception {
         PostgresSourceFetchTaskContext ctx = (PostgresSourceFetchTaskContext) context;
 
         PostgresSnapshotSplitReadTask snapshotSplitReadTask =
@@ -120,8 +121,8 @@ public class PostgresScanFetchTask extends AbstractScanFetchTask {
     }
 
     @Override
-    protected void executeBackfillTask(Context context, StreamSplit backfillStreamSplit)
-            throws Exception {
+    protected void executeBackfillTask(
+            Context<JdbcSourceConfig> context, StreamSplit backfillStreamSplit) throws Exception {
         PostgresSourceFetchTaskContext ctx = (PostgresSourceFetchTaskContext) context;
 
         final PostgresOffsetContext.Loader loader =
@@ -228,7 +229,7 @@ public class PostgresScanFetchTask extends AbstractScanFetchTask {
                 PostgresSchema databaseSchema,
                 PostgresOffsetContext previousOffset,
                 PostgresEventDispatcher<TableId> eventDispatcher,
-                SnapshotProgressListener snapshotProgressListener,
+                SnapshotProgressListener<PostgresPartition> snapshotProgressListener,
                 SnapshotSplit snapshotSplit) {
             super(connectorConfig, snapshotProgressListener);
             this.jdbcConnection = jdbcConnection;

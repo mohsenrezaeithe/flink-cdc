@@ -19,6 +19,7 @@ package org.apache.flink.cdc.connectors.postgres.source.fetch;
 
 import org.apache.flink.cdc.common.annotation.VisibleForTesting;
 import org.apache.flink.cdc.connectors.base.WatermarkDispatcher;
+import org.apache.flink.cdc.connectors.base.config.JdbcSourceConfig;
 import org.apache.flink.cdc.connectors.base.source.meta.offset.Offset;
 import org.apache.flink.cdc.connectors.base.source.meta.split.SourceSplitBase;
 import org.apache.flink.cdc.connectors.base.source.meta.split.StreamSplit;
@@ -51,7 +52,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 /** A {@link FetchTask} implementation for Postgres to read streaming changes. */
-public class PostgresStreamFetchTask implements FetchTask<SourceSplitBase> {
+public class PostgresStreamFetchTask implements FetchTask<SourceSplitBase, JdbcSourceConfig> {
     private static final Logger LOG = LoggerFactory.getLogger(PostgresStreamFetchTask.class);
 
     private final StreamSplit split;
@@ -69,7 +70,7 @@ public class PostgresStreamFetchTask implements FetchTask<SourceSplitBase> {
     }
 
     @Override
-    public void execute(Context context) throws Exception {
+    public void execute(Context<JdbcSourceConfig> context) throws Exception {
         if (stopped) {
             LOG.debug(
                     "StreamFetchTask for split: {} is already stopped and can not be executed",

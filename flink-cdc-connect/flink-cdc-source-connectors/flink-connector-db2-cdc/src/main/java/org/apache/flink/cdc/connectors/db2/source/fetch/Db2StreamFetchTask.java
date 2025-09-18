@@ -18,6 +18,7 @@
 package org.apache.flink.cdc.connectors.db2.source.fetch;
 
 import org.apache.flink.cdc.connectors.base.WatermarkDispatcher;
+import org.apache.flink.cdc.connectors.base.config.JdbcSourceConfig;
 import org.apache.flink.cdc.connectors.base.source.meta.offset.Offset;
 import org.apache.flink.cdc.connectors.base.source.meta.split.SourceSplitBase;
 import org.apache.flink.cdc.connectors.base.source.meta.split.StreamSplit;
@@ -44,7 +45,7 @@ import org.slf4j.LoggerFactory;
 import static org.apache.flink.cdc.connectors.db2.source.offset.LsnOffset.NO_STOPPING_OFFSET;
 
 /** The task to work for fetching data of Db2 table stream split . */
-public class Db2StreamFetchTask implements FetchTask<SourceSplitBase> {
+public class Db2StreamFetchTask implements FetchTask<SourceSplitBase, JdbcSourceConfig> {
 
     private final StreamSplit split;
     private volatile boolean taskRunning = false;
@@ -54,7 +55,7 @@ public class Db2StreamFetchTask implements FetchTask<SourceSplitBase> {
     }
 
     @Override
-    public void execute(Context context) throws Exception {
+    public void execute(Context<JdbcSourceConfig> context) throws Exception {
         Db2SourceFetchTaskContext sourceFetchContext = (Db2SourceFetchTaskContext) context;
         sourceFetchContext.getOffsetContext().preSnapshotCompletion();
         taskRunning = true;

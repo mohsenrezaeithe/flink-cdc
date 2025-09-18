@@ -116,7 +116,7 @@ public class MySqlBinlogSplit extends MySqlSplit {
     private String getTablesForLog() {
         List<TableId> tablesForLog = new ArrayList<>();
         if (tableSchemas != null) {
-            List<TableId> tableIds = new ArrayList<>(new TreeSet(tableSchemas.keySet()));
+            List<TableId> tableIds = new ArrayList<>(new TreeSet<>(tableSchemas.keySet()));
             // Truncate tables length to avoid printing too much log
             tablesForLog = tableIds.subList(0, Math.min(tableIds.size(), TABLES_LENGTH_FOR_LOG));
         }
@@ -216,7 +216,7 @@ public class MySqlBinlogSplit extends MySqlSplit {
         Set<TableId> tablesToRemoveInFinishedSnapshotSplitInfos =
                 binlogSplit.getFinishedSnapshotSplitInfos().stream()
                         .filter(i -> !currentTableFilter.isIncluded(i.getTableId()))
-                        .map(split -> split.getTableId())
+                        .map(FinishedSnapshotSplitInfo::getTableId)
                         .collect(Collectors.toSet());
         if (tablesToRemoveInFinishedSnapshotSplitInfos.isEmpty()) {
             return new MySqlBinlogSplit(

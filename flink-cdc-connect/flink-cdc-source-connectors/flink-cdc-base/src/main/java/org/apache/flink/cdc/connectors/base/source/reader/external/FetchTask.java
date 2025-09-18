@@ -34,24 +34,24 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 
-/** The task to fetching data of a Split. */
+/** The task to fetching data of a SPLIT. */
 @Experimental
-public interface FetchTask<Split> {
+public interface FetchTask<SPLIT, C extends SourceConfig> {
 
     /** Execute current task. */
-    void execute(Context context) throws Exception;
+    void execute(Context<C> context) throws Exception;
 
     /** Returns current task is running or not. */
     boolean isRunning();
 
     /** Returns the split that the task used. */
-    Split getSplit();
+    SPLIT getSplit();
 
     /** Close current task. * */
     void close();
 
     /** Base context used in the execution of fetch task. */
-    interface Context {
+    interface Context<C extends SourceConfig> {
 
         void configure(SourceSplitBase sourceSplitBase);
 
@@ -73,8 +73,8 @@ public interface FetchTask<Split> {
 
         void close() throws Exception;
 
-        DataSourceDialect getDataSourceDialect();
+        DataSourceDialect<C> getDataSourceDialect();
 
-        SourceConfig getSourceConfig();
+        C getSourceConfig();
     }
 }

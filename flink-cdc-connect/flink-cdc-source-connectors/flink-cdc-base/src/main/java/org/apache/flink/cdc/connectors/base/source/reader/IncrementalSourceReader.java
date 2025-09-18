@@ -44,10 +44,8 @@ import org.apache.flink.cdc.connectors.base.source.meta.split.StreamSplit;
 import org.apache.flink.cdc.connectors.base.source.meta.split.StreamSplitState;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.connector.base.source.reader.RecordEmitter;
-import org.apache.flink.connector.base.source.reader.RecordsWithSplitIds;
 import org.apache.flink.connector.base.source.reader.SingleThreadMultiplexSourceReaderBase;
 import org.apache.flink.connector.base.source.reader.fetcher.SingleThreadFetcherManager;
-import org.apache.flink.connector.base.source.reader.synchronization.FutureCompletingBlockingQueue;
 import org.apache.flink.util.FlinkRuntimeException;
 import org.apache.flink.util.Preconditions;
 
@@ -110,7 +108,6 @@ public class IncrementalSourceReader<T, C extends SourceConfig>
     private final IncrementalSourceReaderContext incrementalSourceReaderContext;
 
     public IncrementalSourceReader(
-            FutureCompletingBlockingQueue<RecordsWithSplitIds<SourceRecords>> elementQueue,
             Supplier<IncrementalSourceSplitReader<C>> splitReaderSupplier,
             RecordEmitter<SourceRecords, T, SourceSplitState> recordEmitter,
             Configuration config,
@@ -119,8 +116,7 @@ public class IncrementalSourceReader<T, C extends SourceConfig>
             SourceSplitSerializer sourceSplitSerializer,
             DataSourceDialect<C> dialect) {
         super(
-                elementQueue,
-                new SingleThreadFetcherManager<>(elementQueue, splitReaderSupplier::get),
+                new SingleThreadFetcherManager<>(splitReaderSupplier::get, config),
                 recordEmitter,
                 config,
                 incrementalSourceReaderContext.getSourceReaderContext());
@@ -191,7 +187,7 @@ public class IncrementalSourceReader<T, C extends SourceConfig>
                                             newAddedSplitState
                                                     .asSnapshotSplitState()
                                                     .toSourceSplit()));
-            Preconditions.checkState(finishedSplitIds.values().size() == 1);
+            Preconditions.checkState(finishedSplitIds.size() == 1);
             LOG.info(
                     "Source reader {} finished stream split and snapshot split {}",
                     subtaskId,
@@ -281,13 +277,13 @@ public class IncrementalSourceReader<T, C extends SourceConfig>
                 // We need to remove these splits for the deleted tables at the finished split
                 // infos.
                 if (checkTableChangeForStreamSplit) {
-                    LOG.info("before checkTableChangeForStreamSplit: " + streamSplit);
+                    LOG.info("before checkTableChangeForStreamSplit: {}", streamSplit);
                     streamSplit =
                             filterOutdatedSplitInfos(
                                     streamSplit,
                                     (tableId) ->
                                             dialect.isIncludeDataCollection(sourceConfig, tableId));
-                    LOG.info("after checkTableChangeForStreamSplit: " + streamSplit);
+                    LOG.info("after checkTableChangeForStreamSplit: {}", streamSplit);
                 }
 
                 // Try to discovery table schema once for newly added tables when source reader
@@ -365,7 +361,7 @@ public class IncrementalSourceReader<T, C extends SourceConfig>
                 finishedSnapshotSplits.size() % sourceConfig.getSplitMetaGroupSize();
         if (splitsNumOfLastGroup != 0) {
             int lastGroupStart =
-                    ((int) (finishedSnapshotSplits.size() / sourceConfig.getSplitMetaGroupSize()))
+                    (finishedSnapshotSplits.size() / sourceConfig.getSplitMetaGroupSize())
                             * metaGroupSize;
             // Keep same order with HybridSplitAssigner.createStreamSplit() to avoid
             // 'invalid request meta group id' error

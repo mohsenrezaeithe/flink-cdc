@@ -62,16 +62,12 @@ import io.debezium.util.Collect;
 import io.debezium.util.SchemaNameAdjuster;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
 import java.util.Map;
 
 /** The context for fetch task that fetching data of snapshot split from SqlServer data source. */
 public class SqlServerSourceFetchTaskContext extends JdbcSourceFetchTaskContext {
-    private static final Logger LOG =
-            LoggerFactory.getLogger(SqlServerSourceFetchTaskContext.class);
 
     /** Connection used for reading CDC tables. */
     private final SqlServerConnection connection;

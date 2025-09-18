@@ -17,7 +17,7 @@
 
 package org.apache.flink.cdc.runtime.typeutils;
 
-import org.apache.flink.api.common.ExecutionConfig;
+import org.apache.flink.api.common.serialization.SerializerConfig;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.cdc.common.annotation.Internal;
@@ -59,7 +59,7 @@ public class PartitioningEventTypeInfo extends TypeInformation<PartitioningEvent
     }
 
     @Override
-    public TypeSerializer<PartitioningEvent> createSerializer(ExecutionConfig config) {
+    public TypeSerializer<PartitioningEvent> createSerializer(SerializerConfig config) {
         return PartitioningEventSerializer.INSTANCE;
     }
 
