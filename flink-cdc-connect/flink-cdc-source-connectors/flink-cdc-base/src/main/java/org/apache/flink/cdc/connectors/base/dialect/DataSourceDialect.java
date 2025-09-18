@@ -76,10 +76,10 @@ public interface DataSourceDialect<C extends SourceConfig> extends Serializable,
     ChunkSplitter createChunkSplitter(C sourceConfig, ChunkSplitterState chunkSplitterState);
 
     /** The fetch task used to fetch data of a snapshot split or stream split. */
-    FetchTask<SourceSplitBase> createFetchTask(SourceSplitBase sourceSplitBase);
+    FetchTask<SourceSplitBase, C> createFetchTask(SourceSplitBase sourceSplitBase);
 
     /** The task context used for fetch task to fetch data from external systems. */
-    FetchTask.Context createFetchTaskContext(C sourceConfig);
+    FetchTask.Context<C> createFetchTaskContext(C sourceConfig);
 
     /**
      * We may need the offset corresponding to the checkpointId. For example, we should commit LSN

@@ -195,8 +195,7 @@ public class PostgresDialect implements JdbcDataSourceDialect {
 
         try (JdbcConnection jdbc = openJdbcConnection(sourceConfig)) {
             // fetch table schemas
-            Map<TableId, TableChange> tableSchemas = queryTableSchema(jdbc, capturedTableIds);
-            return tableSchemas;
+            return queryTableSchema(jdbc, capturedTableIds);
         } catch (Exception e) {
             throw new FlinkRuntimeException(
                     "Error to discover table schemas: " + e.getMessage(), e);
@@ -225,7 +224,8 @@ public class PostgresDialect implements JdbcDataSourceDialect {
     }
 
     @Override
-    public FetchTask<SourceSplitBase> createFetchTask(SourceSplitBase sourceSplitBase) {
+    public FetchTask<SourceSplitBase, JdbcSourceConfig> createFetchTask(
+            SourceSplitBase sourceSplitBase) {
         if (sourceSplitBase.isSnapshotSplit()) {
             return new PostgresScanFetchTask(sourceSplitBase.asSnapshotSplit());
         } else {

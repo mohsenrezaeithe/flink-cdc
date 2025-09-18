@@ -24,6 +24,7 @@ import org.apache.flink.cdc.common.event.Event;
 import org.apache.flink.cdc.common.event.FlushEvent;
 import org.apache.flink.cdc.common.event.SchemaChangeEvent;
 import org.apache.flink.cdc.common.event.TableId;
+import org.apache.flink.cdc.common.pipeline.PipelineOptions;
 import org.apache.flink.cdc.common.pipeline.SchemaChangeBehavior;
 import org.apache.flink.cdc.common.route.RouteRule;
 import org.apache.flink.cdc.common.schema.Schema;
@@ -39,7 +40,6 @@ import org.apache.flink.runtime.operators.coordination.CoordinationRequest;
 import org.apache.flink.runtime.operators.coordination.CoordinationResponse;
 import org.apache.flink.streaming.api.graph.StreamConfig;
 import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
-import org.apache.flink.streaming.api.operators.ChainingStrategy;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.api.operators.Output;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
@@ -56,8 +56,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
-
-import static org.apache.flink.cdc.common.pipeline.PipelineOptions.DEFAULT_SCHEMA_OPERATOR_RPC_TIMEOUT;
 
 /**
  * The operator will evolve schemas in {@link
@@ -88,7 +86,7 @@ public class SchemaOperator extends AbstractStreamOperator<Event>
 
     @VisibleForTesting
     public SchemaOperator(List<RouteRule> routingRules) {
-        this(routingRules, DEFAULT_SCHEMA_OPERATOR_RPC_TIMEOUT);
+        this(routingRules, PipelineOptions.DEFAULT_SCHEMA_OPERATOR_RPC_TIMEOUT);
     }
 
     @VisibleForTesting
@@ -109,7 +107,6 @@ public class SchemaOperator extends AbstractStreamOperator<Event>
             Duration rpcTimeOut,
             SchemaChangeBehavior schemaChangeBehavior,
             String timezone) {
-        this.chainingStrategy = ChainingStrategy.ALWAYS;
         this.rpcTimeout = rpcTimeOut;
         this.schemaChangeBehavior = schemaChangeBehavior;
         this.timezone = timezone;
@@ -131,7 +128,7 @@ public class SchemaOperator extends AbstractStreamOperator<Event>
         this.schemaOperatorMetrics =
                 new SchemaOperatorMetrics(
                         getRuntimeContext().getMetricGroup(), schemaChangeBehavior);
-        this.subTaskId = getRuntimeContext().getIndexOfThisSubtask();
+        this.subTaskId = getRuntimeContext().getTaskInfo().getIndexOfThisSubtask();
         this.originalSchemaMap = new HashMap<>();
         this.evolvedSchemaMap = new HashMap<>();
         this.router = new TableIdRouter(routingRules);
@@ -153,7 +150,7 @@ public class SchemaOperator extends AbstractStreamOperator<Event>
         }
     }
 
-    private void handleSchemaChangeEvent(SchemaChangeEvent originalEvent) throws Exception {
+    private void handleSchemaChangeEvent(SchemaChangeEvent originalEvent) {
         // First, update original schema map unconditionally and it will never fail
         TableId tableId = originalEvent.tableId();
         originalSchemaMap.compute(

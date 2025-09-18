@@ -19,6 +19,7 @@ package org.apache.flink.cdc.connectors.mysql.source.offset;
 
 import org.apache.flink.cdc.common.annotation.Internal;
 
+import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.core.type.TypeReference;
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
@@ -38,7 +39,7 @@ public class BinlogOffsetSerializer {
 
     public BinlogOffset deserialize(byte[] bytes) throws IOException {
         ObjectMapper objectMapper = new ObjectMapper();
-        Map<String, String> offset = objectMapper.readValue(bytes, Map.class);
+        Map<String, String> offset = objectMapper.readValue(bytes, new TypeReference<>() {});
         return new BinlogOffset(offset);
     }
 }

@@ -183,13 +183,15 @@ public class ZonedTimestampDataSerializer extends TypeSerializer<ZonedTimestampD
 
         @Override
         public TypeSerializerSchemaCompatibility<ZonedTimestampData> resolveSchemaCompatibility(
-                TypeSerializer<ZonedTimestampData> newSerializer) {
-            if (!(newSerializer instanceof ZonedTimestampDataSerializer)) {
+                TypeSerializerSnapshot<ZonedTimestampData> serializerSnapshot) {
+            final TypeSerializer<ZonedTimestampData> serializer =
+                    serializerSnapshot.restoreSerializer();
+            if (!(serializer instanceof ZonedTimestampDataSerializer)) {
                 return TypeSerializerSchemaCompatibility.incompatible();
             }
 
             ZonedTimestampDataSerializer timestampDataSerializer =
-                    (ZonedTimestampDataSerializer) newSerializer;
+                    (ZonedTimestampDataSerializer) serializer;
             if (previousPrecision != timestampDataSerializer.precision) {
                 return TypeSerializerSchemaCompatibility.incompatible();
             } else {

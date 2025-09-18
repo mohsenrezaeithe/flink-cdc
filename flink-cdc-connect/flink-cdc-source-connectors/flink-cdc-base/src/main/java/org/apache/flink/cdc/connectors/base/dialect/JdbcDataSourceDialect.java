@@ -60,7 +60,7 @@ public interface JdbcDataSourceDialect extends DataSourceDialect<JdbcSourceConfi
     TableChange queryTableSchema(JdbcConnection jdbc, TableId tableId);
 
     @Override
-    FetchTask<SourceSplitBase> createFetchTask(SourceSplitBase sourceSplitBase);
+    FetchTask<SourceSplitBase, JdbcSourceConfig> createFetchTask(SourceSplitBase sourceSplitBase);
 
     default void close() throws IOException {
         JdbcConnectionPools.getInstance(getPooledDataSourceFactory()).clear();

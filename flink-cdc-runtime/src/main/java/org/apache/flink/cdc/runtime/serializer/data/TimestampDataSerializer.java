@@ -173,13 +173,13 @@ public class TimestampDataSerializer extends TypeSerializer<TimestampData> {
 
         @Override
         public TypeSerializerSchemaCompatibility<TimestampData> resolveSchemaCompatibility(
-                TypeSerializer<TimestampData> newSerializer) {
-            if (!(newSerializer instanceof TimestampDataSerializer)) {
+                TypeSerializerSnapshot<TimestampData> serializerSnapshot) {
+            final TypeSerializer<TimestampData> serializer = serializerSnapshot.restoreSerializer();
+            if (!(serializer instanceof TimestampDataSerializer)) {
                 return TypeSerializerSchemaCompatibility.incompatible();
             }
 
-            TimestampDataSerializer timestampDataSerializer =
-                    (TimestampDataSerializer) newSerializer;
+            TimestampDataSerializer timestampDataSerializer = (TimestampDataSerializer) serializer;
             if (previousPrecision != timestampDataSerializer.precision) {
                 return TypeSerializerSchemaCompatibility.incompatible();
             } else {

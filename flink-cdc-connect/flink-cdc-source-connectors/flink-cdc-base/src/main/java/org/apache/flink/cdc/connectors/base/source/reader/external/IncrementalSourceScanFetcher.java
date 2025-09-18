@@ -18,6 +18,7 @@
 package org.apache.flink.cdc.connectors.base.source.reader.external;
 
 import org.apache.flink.cdc.common.annotation.VisibleForTesting;
+import org.apache.flink.cdc.connectors.base.config.SourceConfig;
 import org.apache.flink.cdc.connectors.base.source.meta.split.SnapshotSplit;
 import org.apache.flink.cdc.connectors.base.source.meta.split.SourceRecords;
 import org.apache.flink.cdc.connectors.base.source.meta.split.SourceSplitBase;
@@ -54,25 +55,26 @@ import static org.apache.flink.util.Preconditions.checkState;
 /**
  * Fetcher to fetch data from table split, the split is the snapshot split {@link SnapshotSplit}.
  */
-public class IncrementalSourceScanFetcher implements Fetcher<SourceRecords, SourceSplitBase> {
+public class IncrementalSourceScanFetcher<C extends SourceConfig>
+        implements Fetcher<SourceRecords, SourceSplitBase, C> {
 
     private static final Logger LOG = LoggerFactory.getLogger(IncrementalSourceScanFetcher.class);
 
     public AtomicBoolean hasNextElement;
     public AtomicBoolean reachEnd;
 
-    private final FetchTask.Context taskContext;
+    private final FetchTask.Context<C> taskContext;
     private final ExecutorService executorService;
     private volatile ChangeEventQueue<DataChangeEvent> queue;
     private volatile Throwable readException;
 
     // task to read snapshot for current split
-    private FetchTask<SourceSplitBase> snapshotSplitReadTask;
+    private FetchTask<SourceSplitBase, C> snapshotSplitReadTask;
     private SnapshotSplit currentSnapshotSplit;
 
     private static final long READER_CLOSE_TIMEOUT_SECONDS = 30L;
 
-    public IncrementalSourceScanFetcher(FetchTask.Context taskContext, int subtaskId) {
+    public IncrementalSourceScanFetcher(FetchTask.Context<C> taskContext, int subtaskId) {
         this.taskContext = taskContext;
         ThreadFactory threadFactory =
                 new ThreadFactoryBuilder()
@@ -86,7 +88,7 @@ public class IncrementalSourceScanFetcher implements Fetcher<SourceRecords, Sour
     }
 
     @Override
-    public void submitTask(FetchTask<SourceSplitBase> fetchTask) {
+    public void submitTask(FetchTask<SourceSplitBase, C> fetchTask) {
         this.snapshotSplitReadTask = fetchTask;
         this.currentSnapshotSplit = fetchTask.getSplit().asSnapshotSplit();
         taskContext.configure(currentSnapshotSplit);
@@ -211,9 +213,8 @@ public class IncrementalSourceScanFetcher implements Fetcher<SourceRecords, Sour
 
     private void setReadException(Throwable throwable) {
         LOG.error(
-                String.format(
-                        "Execute snapshot read task for snapshot split %s fail",
-                        currentSnapshotSplit),
+                "Execute snapshot read task for snapshot split {} fail",
+                currentSnapshotSplit,
                 throwable);
         if (readException == null) {
             readException = throwable;

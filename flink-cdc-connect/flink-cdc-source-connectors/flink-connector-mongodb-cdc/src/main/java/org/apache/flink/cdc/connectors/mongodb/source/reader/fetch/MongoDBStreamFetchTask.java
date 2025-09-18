@@ -75,7 +75,7 @@ import static org.apache.flink.cdc.connectors.mongodb.source.utils.MongoUtils.ge
 import static org.apache.flink.cdc.connectors.mongodb.source.utils.MongoUtils.getCurrentClusterTime;
 
 /** The task to work for fetching data of MongoDB stream split . */
-public class MongoDBStreamFetchTask implements FetchTask<SourceSplitBase> {
+public class MongoDBStreamFetchTask implements FetchTask<SourceSplitBase, MongoDBSourceConfig> {
 
     private static final Logger LOG = LoggerFactory.getLogger(MongoDBStreamFetchTask.class);
 
@@ -92,7 +92,7 @@ public class MongoDBStreamFetchTask implements FetchTask<SourceSplitBase> {
     }
 
     @Override
-    public void execute(Context context) throws Exception {
+    public void execute(Context<MongoDBSourceConfig> context) throws Exception {
         MongoDBFetchTaskContext taskContext = (MongoDBFetchTaskContext) context;
         this.sourceConfig = taskContext.getSourceConfig();
 

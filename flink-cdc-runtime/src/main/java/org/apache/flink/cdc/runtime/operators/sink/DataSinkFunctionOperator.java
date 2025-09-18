@@ -28,9 +28,8 @@ import org.apache.flink.cdc.common.schema.Schema;
 import org.apache.flink.cdc.runtime.operators.sink.exception.SinkWrapperException;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.state.StateInitializationContext;
-import org.apache.flink.streaming.api.functions.sink.SinkFunction;
+import org.apache.flink.streaming.api.functions.sink.legacy.SinkFunction;
 import org.apache.flink.streaming.api.graph.StreamConfig;
-import org.apache.flink.streaming.api.operators.ChainingStrategy;
 import org.apache.flink.streaming.api.operators.Output;
 import org.apache.flink.streaming.api.operators.StreamSink;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
@@ -42,7 +41,7 @@ import java.util.Set;
 
 /**
  * An operator that processes records to be written into a {@link
- * org.apache.flink.streaming.api.functions.sink.SinkFunction}.
+ * org.apache.flink.streaming.api.functions.sink.legacy.SinkFunction}.
  *
  * <p>The operator is a proxy of {@link org.apache.flink.streaming.api.operators.StreamSink} in
  * Flink.
@@ -54,6 +53,7 @@ public class DataSinkFunctionOperator extends StreamSink<Event> {
 
     private SchemaEvolutionClient schemaEvolutionClient;
     private final OperatorID schemaOperatorID;
+
     /** A set of {@link TableId} that already processed {@link CreateTableEvent}. */
     private final Set<TableId> processedTableIds;
 
@@ -61,7 +61,6 @@ public class DataSinkFunctionOperator extends StreamSink<Event> {
         super(userFunction);
         this.schemaOperatorID = schemaOperatorID;
         processedTableIds = new HashSet<>();
-        this.chainingStrategy = ChainingStrategy.ALWAYS;
     }
 
     @Override
@@ -78,7 +77,8 @@ public class DataSinkFunctionOperator extends StreamSink<Event> {
 
     @Override
     public void initializeState(StateInitializationContext context) throws Exception {
-        schemaEvolutionClient.registerSubtask(getRuntimeContext().getIndexOfThisSubtask());
+        schemaEvolutionClient.registerSubtask(
+                getRuntimeContext().getTaskInfo().getIndexOfThisSubtask());
         super.initializeState(context);
     }
 
@@ -134,7 +134,8 @@ public class DataSinkFunctionOperator extends StreamSink<Event> {
                             });
         }
         schemaEvolutionClient.notifyFlushSuccess(
-                getRuntimeContext().getIndexOfThisSubtask(), event.getSourceSubTaskId());
+                getRuntimeContext().getTaskInfo().getIndexOfThisSubtask(),
+                event.getSourceSubTaskId());
     }
 
     private void emitLatestSchema(TableId tableId) throws Exception {

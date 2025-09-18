@@ -152,7 +152,7 @@ public abstract class SerializerTestBase<T> {
         }
 
         TypeSerializerSchemaCompatibility<T> strategy =
-                restoredConfig.resolveSchemaCompatibility(getSerializer());
+                getSerializer().snapshotConfiguration().resolveSchemaCompatibility(restoredConfig);
         final TypeSerializer<T> restoreSerializer;
         if (strategy.isCompatibleAsIs()) {
             restoreSerializer = restoredConfig.restoreSerializer();

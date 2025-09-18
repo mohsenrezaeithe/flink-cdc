@@ -143,7 +143,8 @@ public class Db2Dialect implements JdbcDataSourceDialect {
     }
 
     @Override
-    public FetchTask<SourceSplitBase> createFetchTask(SourceSplitBase sourceSplitBase) {
+    public FetchTask<SourceSplitBase, JdbcSourceConfig> createFetchTask(
+            SourceSplitBase sourceSplitBase) {
         if (sourceSplitBase.isSnapshotSplit()) {
             return new Db2ScanFetchTask(sourceSplitBase.asSnapshotSplit());
         } else {
@@ -157,7 +158,7 @@ public class Db2Dialect implements JdbcDataSourceDialect {
      * @param sourceConfig
      */
     @Override
-    public Context createFetchTaskContext(JdbcSourceConfig sourceConfig) {
+    public Context<JdbcSourceConfig> createFetchTaskContext(JdbcSourceConfig sourceConfig) {
         final Db2Connection jdbcConnection =
                 createDb2Connection(sourceConfig.getDbzConnectorConfig());
         final Db2Connection metaDataConnection =

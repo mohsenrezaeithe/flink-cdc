@@ -48,7 +48,7 @@ import java.util.stream.Collectors;
 import static org.apache.flink.cdc.connectors.mongodb.source.utils.BsonUtils.compareBsonValue;
 
 /** The context for fetch task that fetching data of snapshot split from MongoDB data source. */
-public class MongoDBFetchTaskContext implements FetchTask.Context {
+public class MongoDBFetchTaskContext implements FetchTask.Context<MongoDBSourceConfig> {
 
     private final MongoDBDialect dialect;
     private final MongoDBSourceConfig sourceConfig;

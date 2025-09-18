@@ -22,6 +22,7 @@ import org.apache.flink.core.memory.DataInputDeserializer;
 import org.apache.flink.core.memory.DataOutputSerializer;
 import org.apache.flink.util.FlinkRuntimeException;
 
+import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.core.type.TypeReference;
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.databind.ObjectMapper;
 
 import io.debezium.relational.TableId;
@@ -129,7 +130,7 @@ public interface OffsetDeserializerSerializer extends Serializable {
 
         public Offset deserialize(byte[] bytes) throws IOException {
             ObjectMapper objectMapper = new ObjectMapper();
-            Map<String, String> offset = objectMapper.readValue(bytes, Map.class);
+            Map<String, String> offset = objectMapper.readValue(bytes, new TypeReference<>() {});
 
             return factory.newOffset(offset);
         }

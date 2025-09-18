@@ -47,13 +47,13 @@ public class CDCPostgresDispatcher extends PostgresEventDispatcher<TableId>
 
     public CDCPostgresDispatcher(
             PostgresConnectorConfig connectorConfig,
-            TopicSelector topicSelector,
-            DatabaseSchema schema,
-            ChangeEventQueue queue,
-            DataCollectionFilters.DataCollectionFilter filter,
+            TopicSelector<TableId> topicSelector,
+            DatabaseSchema<TableId> schema,
+            ChangeEventQueue<DataChangeEvent> queue,
+            DataCollectionFilters.DataCollectionFilter<TableId> filter,
             ChangeEventCreator changeEventCreator,
             EventMetadataProvider metadataProvider,
-            HeartbeatFactory heartbeatFactory,
+            HeartbeatFactory<TableId> heartbeatFactory,
             SchemaNameAdjuster schemaNameAdjuster) {
         super(
                 connectorConfig,

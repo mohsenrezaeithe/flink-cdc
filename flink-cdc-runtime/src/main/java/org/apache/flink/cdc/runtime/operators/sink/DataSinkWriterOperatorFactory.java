@@ -33,8 +33,7 @@ import org.apache.flink.streaming.runtime.operators.sink.DataSinkWriterOperator;
 @Internal
 public class DataSinkWriterOperatorFactory<CommT>
         extends AbstractStreamOperatorFactory<CommittableMessage<CommT>>
-        implements OneInputStreamOperatorFactory<Event, CommittableMessage<CommT>>,
-                YieldingOperatorFactory<CommittableMessage<CommT>> {
+        implements OneInputStreamOperatorFactory<Event, CommittableMessage<CommT>> {
 
     private final Sink<Event> sink;
     private final boolean isBounded;
@@ -55,7 +54,7 @@ public class DataSinkWriterOperatorFactory<CommT>
         if (isBounded) {
             BatchDataSinkWriterOperator<CommT> writerOperator =
                     new BatchDataSinkWriterOperator<>(
-                            sink, processingTimeService, getMailboxExecutor());
+                            parameters, sink, processingTimeService, getMailboxExecutor());
             writerOperator.setup(
                     parameters.getContainingTask(),
                     parameters.getStreamConfig(),
@@ -64,7 +63,11 @@ public class DataSinkWriterOperatorFactory<CommT>
         }
         DataSinkWriterOperator<CommT> writerOperator =
                 new DataSinkWriterOperator<>(
-                        sink, processingTimeService, getMailboxExecutor(), schemaOperatorID);
+                        parameters,
+                        sink,
+                        processingTimeService,
+                        getMailboxExecutor(),
+                        schemaOperatorID);
         writerOperator.setup(
                 parameters.getContainingTask(),
                 parameters.getStreamConfig(),

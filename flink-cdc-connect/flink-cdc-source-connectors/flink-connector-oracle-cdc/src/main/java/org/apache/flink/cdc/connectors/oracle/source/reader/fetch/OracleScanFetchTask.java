@@ -17,6 +17,7 @@
 
 package org.apache.flink.cdc.connectors.oracle.source.reader.fetch;
 
+import org.apache.flink.cdc.connectors.base.config.JdbcSourceConfig;
 import org.apache.flink.cdc.connectors.base.source.meta.split.SnapshotSplit;
 import org.apache.flink.cdc.connectors.base.source.meta.split.StreamSplit;
 import org.apache.flink.cdc.connectors.base.source.reader.external.AbstractScanFetchTask;
@@ -57,14 +58,14 @@ import static org.apache.flink.cdc.connectors.oracle.source.utils.OracleUtils.bu
 import static org.apache.flink.cdc.connectors.oracle.source.utils.OracleUtils.readTableSplitDataStatement;
 
 /** The task to work for fetching data of Oracle table snapshot split. */
-public class OracleScanFetchTask extends AbstractScanFetchTask {
+public class OracleScanFetchTask extends AbstractScanFetchTask<JdbcSourceConfig> {
 
     public OracleScanFetchTask(SnapshotSplit split) {
         super(split);
     }
 
     @Override
-    protected void executeDataSnapshot(Context context) throws Exception {
+    protected void executeDataSnapshot(Context<JdbcSourceConfig> context) throws Exception {
         OracleSourceFetchTaskContext sourceFetchContext = (OracleSourceFetchTaskContext) context;
         OracleSnapshotSplitReadTask snapshotSplitReadTask =
                 new OracleSnapshotSplitReadTask(
@@ -90,8 +91,8 @@ public class OracleScanFetchTask extends AbstractScanFetchTask {
     }
 
     @Override
-    protected void executeBackfillTask(Context context, StreamSplit backfillStreamSplit)
-            throws Exception {
+    protected void executeBackfillTask(
+            Context<JdbcSourceConfig> context, StreamSplit backfillStreamSplit) {
         OracleSourceFetchTaskContext sourceFetchContext = (OracleSourceFetchTaskContext) context;
 
         final RedoLogSplitReadTask backfillRedoLogReadTask =

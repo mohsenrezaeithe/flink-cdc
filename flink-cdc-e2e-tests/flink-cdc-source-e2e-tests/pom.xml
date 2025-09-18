@@ -28,10 +28,8 @@ limitations under the License.
     <artifactId>flink-cdc-source-e2e-tests</artifactId>
 
     <properties>
-        <flink-1.19>1.19.2</flink-1.19>
-        <flink-1.20>1.20.1</flink-1.20>
-        <jdbc.version-1.19>3.2.0-1.19</jdbc.version-1.19>
-        <jdbc.version-1.20>3.2.0-1.19</jdbc.version-1.20>
+        <jdbc.version-1.20>3.3.0-${flink-major-1.20}</jdbc.version-1.20>
+        <jdbc.version-2.0>4.0.0-${flink-major-2.0}</jdbc.version-2.0>
         <mysql.driver.version>8.0.27</mysql.driver.version>
         <postgresql.driver.version>42.7.3</postgresql.driver.version>
     </properties>
@@ -243,8 +241,8 @@ limitations under the License.
                         <artifactItem>
                             <groupId>org.apache.flink</groupId>
                             <artifactId>flink-connector-jdbc</artifactId>
-                            <version>${jdbc.version-1.19}</version>
-                            <destFileName>jdbc-connector_${flink-1.19}.jar</destFileName>
+                            <version>${jdbc.version-1.20}</version>
+                            <destFileName>jdbc-connector_${flink-1.20}.jar</destFileName>
                             <type>jar</type>
                             <outputDirectory>${project.build.directory}/dependencies
                             </outputDirectory>
@@ -255,6 +253,66 @@ limitations under the License.
                             <artifactId>flink-connector-jdbc</artifactId>
                             <version>${jdbc.version-1.20}</version>
                             <destFileName>jdbc-connector_${flink-1.20}.jar</destFileName>
+                            <type>jar</type>
+                            <outputDirectory>${project.build.directory}/dependencies
+                            </outputDirectory>
+                        </artifactItem>
+
+                        <artifactItem>
+                            <groupId>org.apache.flink</groupId>
+                            <artifactId>flink-connector-jdbc-db2</artifactId>
+                            <version>${jdbc.version-2.0}</version>
+                            <destFileName>db2-jdbc-connector_${flink-2.0}.jar</destFileName>
+                            <type>jar</type>
+                            <outputDirectory>${project.build.directory}/dependencies
+                            </outputDirectory>
+                        </artifactItem>
+
+                        <artifactItem>
+                            <groupId>org.apache.flink</groupId>
+                            <artifactId>flink-connector-jdbc-mysql</artifactId>
+                            <version>${jdbc.version-2.0}</version>
+                            <destFileName>mysql-jdbc-connector_${flink-2.0}.jar</destFileName>
+                            <type>jar</type>
+                            <outputDirectory>${project.build.directory}/dependencies
+                            </outputDirectory>
+                        </artifactItem>
+
+                        <artifactItem>
+                            <groupId>org.apache.flink</groupId>
+                            <artifactId>flink-connector-jdbc-oceanbase</artifactId>
+                            <version>${jdbc.version-2.0}</version>
+                            <destFileName>oceanbase-jdbc-connector_${flink-2.0}.jar</destFileName>
+                            <type>jar</type>
+                            <outputDirectory>${project.build.directory}/dependencies
+                            </outputDirectory>
+                        </artifactItem>
+
+                        <artifactItem>
+                            <groupId>org.apache.flink</groupId>
+                            <artifactId>flink-connector-jdbc-oracle</artifactId>
+                            <version>${jdbc.version-2.0}</version>
+                            <destFileName>oracle-jdbc-connector_${flink-2.0}.jar</destFileName>
+                            <type>jar</type>
+                            <outputDirectory>${project.build.directory}/dependencies
+                            </outputDirectory>
+                        </artifactItem>
+
+                        <artifactItem>
+                            <groupId>org.apache.flink</groupId>
+                            <artifactId>flink-connector-jdbc-postgres</artifactId>
+                            <version>${jdbc.version-2.0}</version>
+                            <destFileName>postgres-jdbc-connector_${flink-2.0}.jar</destFileName>
+                            <type>jar</type>
+                            <outputDirectory>${project.build.directory}/dependencies
+                            </outputDirectory>
+                        </artifactItem>
+
+                        <artifactItem>
+                            <groupId>org.apache.flink</groupId>
+                            <artifactId>flink-connector-jdbc-sqlserver</artifactId>
+                            <version>${jdbc.version-2.0}</version>
+                            <destFileName>sqlserver-jdbc-connector_${flink-2.0}.jar</destFileName>
                             <type>jar</type>
                             <outputDirectory>${project.build.directory}/dependencies
                             </outputDirectory>

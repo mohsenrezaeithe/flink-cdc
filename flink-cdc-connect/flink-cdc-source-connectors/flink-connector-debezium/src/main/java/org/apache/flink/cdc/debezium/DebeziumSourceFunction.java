@@ -17,6 +17,7 @@
 
 package org.apache.flink.cdc.debezium;
 
+import org.apache.flink.api.common.functions.OpenContext;
 import org.apache.flink.api.common.state.CheckpointListener;
 import org.apache.flink.api.common.state.ListState;
 import org.apache.flink.api.common.state.ListStateDescriptor;
@@ -36,14 +37,13 @@ import org.apache.flink.cdc.debezium.internal.FlinkDatabaseSchemaHistory;
 import org.apache.flink.cdc.debezium.internal.FlinkOffsetBackingStore;
 import org.apache.flink.cdc.debezium.internal.Handover;
 import org.apache.flink.cdc.debezium.internal.SchemaRecord;
-import org.apache.flink.configuration.Configuration;
 import org.apache.flink.metrics.Gauge;
 import org.apache.flink.metrics.groups.OperatorMetricGroup;
 import org.apache.flink.runtime.metrics.MetricNames;
 import org.apache.flink.runtime.state.FunctionInitializationContext;
 import org.apache.flink.runtime.state.FunctionSnapshotContext;
 import org.apache.flink.streaming.api.checkpoint.CheckpointedFunction;
-import org.apache.flink.streaming.api.functions.source.RichSourceFunction;
+import org.apache.flink.streaming.api.functions.source.legacy.RichSourceFunction;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.FlinkRuntimeException;
 
@@ -212,7 +212,7 @@ public class DebeziumSourceFunction<T> extends RichSourceFunction<T>
     }
 
     @Override
-    public void open(Configuration parameters) throws Exception {
+    public void open(OpenContext parameters) throws Exception {
         validator.validate();
         super.open(parameters);
         ThreadFactory threadFactory =
@@ -249,12 +249,12 @@ public class DebeziumSourceFunction<T> extends RichSourceFunction<T>
                 restoredOffsetState = new String(serializedOffset, StandardCharsets.UTF_8);
                 LOG.info(
                         "Consumer subtask {} starts to read from specified offset {}.",
-                        getRuntimeContext().getIndexOfThisSubtask(),
+                        getRuntimeContext().getTaskInfo().getIndexOfThisSubtask(),
                         restoredOffsetState);
             } else {
                 LOG.info(
                         "Consumer subtask {} has no restore state.",
-                        getRuntimeContext().getIndexOfThisSubtask());
+                        getRuntimeContext().getTaskInfo().getIndexOfThisSubtask());
             }
         }
     }
@@ -271,7 +271,7 @@ public class DebeziumSourceFunction<T> extends RichSourceFunction<T>
         }
         LOG.info(
                 "Consumer subtask {} restored offset state: {}.",
-                getRuntimeContext().getIndexOfThisSubtask(),
+                getRuntimeContext().getTaskInfo().getIndexOfThisSubtask(),
                 restoredOffsetState);
     }
 
@@ -297,7 +297,7 @@ public class DebeziumSourceFunction<T> extends RichSourceFunction<T>
         }
         LOG.info(
                 "Consumer subtask {} restored history records state: {} with {} records.",
-                getRuntimeContext().getIndexOfThisSubtask(),
+                getRuntimeContext().getTaskInfo().getIndexOfThisSubtask(),
                 engineInstanceName,
                 recordsCount);
     }
@@ -481,7 +481,7 @@ public class DebeziumSourceFunction<T> extends RichSourceFunction<T>
             if (posInMap == -1) {
                 LOG.warn(
                         "Consumer subtask {} received confirmation for unknown checkpoint id {}",
-                        getRuntimeContext().getIndexOfThisSubtask(),
+                        getRuntimeContext().getTaskInfo().getIndexOfThisSubtask(),
                         checkpointId);
                 return;
             }
@@ -496,7 +496,7 @@ public class DebeziumSourceFunction<T> extends RichSourceFunction<T>
             if (serializedOffsets == null || serializedOffsets.length == 0) {
                 LOG.debug(
                         "Consumer subtask {} has empty checkpoint state.",
-                        getRuntimeContext().getIndexOfThisSubtask());
+                        getRuntimeContext().getTaskInfo().getIndexOfThisSubtask());
                 return;
             }
 

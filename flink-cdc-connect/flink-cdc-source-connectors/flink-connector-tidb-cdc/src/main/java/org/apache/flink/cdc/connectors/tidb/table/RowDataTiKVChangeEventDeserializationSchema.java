@@ -105,7 +105,7 @@ public class RowDataTiKVChangeEventDeserializationSchema
     }
 
     @Override
-    public TypeInformation getProducedType() {
+    public TypeInformation<RowData> getProducedType() {
         return resultTypeInfo;
     }
 }

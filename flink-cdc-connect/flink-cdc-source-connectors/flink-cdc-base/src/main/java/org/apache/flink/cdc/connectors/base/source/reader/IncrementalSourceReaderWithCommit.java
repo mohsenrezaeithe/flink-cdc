@@ -21,12 +21,13 @@ import org.apache.flink.cdc.common.annotation.Experimental;
 import org.apache.flink.cdc.connectors.base.config.SourceConfig;
 import org.apache.flink.cdc.connectors.base.dialect.DataSourceDialect;
 import org.apache.flink.cdc.connectors.base.source.meta.offset.Offset;
+import org.apache.flink.cdc.connectors.base.source.meta.split.SourceRecords;
 import org.apache.flink.cdc.connectors.base.source.meta.split.SourceSplitBase;
 import org.apache.flink.cdc.connectors.base.source.meta.split.SourceSplitSerializer;
+import org.apache.flink.cdc.connectors.base.source.meta.split.SourceSplitState;
 import org.apache.flink.cdc.connectors.base.source.meta.split.StreamSplit;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.connector.base.source.reader.RecordEmitter;
-import org.apache.flink.connector.base.source.reader.synchronization.FutureCompletingBlockingQueue;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -39,7 +40,8 @@ import java.util.function.Supplier;
  * Record the LSN of checkpoint {@link StreamSplit}, which can be used to submit to the CDC source.
  */
 @Experimental
-public class IncrementalSourceReaderWithCommit extends IncrementalSourceReader {
+public class IncrementalSourceReaderWithCommit<T, C extends SourceConfig>
+        extends IncrementalSourceReader<T, C> {
     private static final Logger LOG =
             LoggerFactory.getLogger(IncrementalSourceReaderWithCommit.class);
 
@@ -47,16 +49,14 @@ public class IncrementalSourceReaderWithCommit extends IncrementalSourceReader {
     private long maxCompletedCheckpointId;
 
     public IncrementalSourceReaderWithCommit(
-            FutureCompletingBlockingQueue elementQueue,
-            Supplier supplier,
-            RecordEmitter recordEmitter,
+            Supplier<IncrementalSourceSplitReader<C>> supplier,
+            RecordEmitter<SourceRecords, T, SourceSplitState> recordEmitter,
             Configuration config,
             IncrementalSourceReaderContext incrementalSourceReaderContext,
-            SourceConfig sourceConfig,
+            C sourceConfig,
             SourceSplitSerializer sourceSplitSerializer,
-            DataSourceDialect dialect) {
+            DataSourceDialect<C> dialect) {
         super(
-                elementQueue,
                 supplier,
                 recordEmitter,
                 config,

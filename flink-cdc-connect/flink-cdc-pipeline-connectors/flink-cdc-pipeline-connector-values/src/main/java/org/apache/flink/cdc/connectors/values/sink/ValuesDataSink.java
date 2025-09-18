@@ -30,7 +30,6 @@ import org.apache.flink.cdc.common.event.TableId;
 import org.apache.flink.cdc.common.schema.Schema;
 import org.apache.flink.cdc.common.sink.DataSink;
 import org.apache.flink.cdc.common.sink.EventSinkProvider;
-import org.apache.flink.cdc.common.sink.FlinkSinkFunctionProvider;
 import org.apache.flink.cdc.common.sink.FlinkSinkProvider;
 import org.apache.flink.cdc.common.sink.MetadataApplier;
 import org.apache.flink.cdc.common.utils.SchemaUtils;
@@ -40,6 +39,7 @@ import java.io.Serializable;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /** A {@link DataSink} for "values" connector that supports schema evolution. */
 @Internal
@@ -67,12 +67,10 @@ public class ValuesDataSink implements DataSink, Serializable {
 
     @Override
     public EventSinkProvider getEventSinkProvider() {
-        if (SinkApi.SINK_V2.equals(sinkApi)) {
+        if (Objects.requireNonNull(sinkApi) == SinkApi.SINK_V2) {
             return FlinkSinkProvider.of(new ValuesSink(materializedInMemory, print));
-        } else {
-            return FlinkSinkFunctionProvider.of(
-                    new ValuesDataSinkFunction(materializedInMemory, print));
         }
+        throw new UnsupportedOperationException("Unsupported sink api: " + sinkApi);
     }
 
     @Override
@@ -180,10 +178,8 @@ public class ValuesDataSink implements DataSink, Serializable {
 
     /** SinkApi which sink based on. */
     public enum SinkApi {
-        /** Sink based on SinkFunction. */
-        SINK_FUNCTION,
 
         /** Sink based on SinkV2. */
-        SINK_V2;
+        SINK_V2
     }
 }

@@ -38,6 +38,7 @@ import org.apache.flink.cdc.common.types.ZonedTimestampType;
 import org.apache.flink.cdc.runtime.serializer.NullableSerializerWrapper;
 import org.apache.flink.cdc.runtime.serializer.data.ArrayDataSerializer;
 import org.apache.flink.cdc.runtime.serializer.data.MapDataSerializer;
+import org.apache.flink.cdc.runtime.serializer.data.RecordDataSerializer;
 
 /**
  * Writer to write a composite data format, like row, array. 1. Invoke {@link #reset()}. 2. Write
@@ -157,18 +158,18 @@ public interface BinaryWriter {
                 break;
             case ARRAY:
                 if (serializer instanceof NullableSerializerWrapper) {
-                    serializer = ((NullableSerializerWrapper) serializer).getWrappedSerializer();
+                    serializer = ((NullableSerializerWrapper<?>) serializer).getWrappedSerializer();
                 }
                 writer.writeArray(pos, (ArrayData) o, (ArrayDataSerializer) serializer);
                 break;
             case MAP:
                 if (serializer instanceof NullableSerializerWrapper) {
-                    serializer = ((NullableSerializerWrapper) serializer).getWrappedSerializer();
+                    serializer = ((NullableSerializerWrapper<?>) serializer).getWrappedSerializer();
                 }
                 writer.writeMap(pos, (MapData) o, (MapDataSerializer) serializer);
                 break;
             case ROW:
-                writer.writeRecord(pos, (RecordData) o, (TypeSerializer<RecordData>) serializer);
+                writer.writeRecord(pos, (RecordData) o, (RecordDataSerializer) serializer);
                 break;
             case BINARY:
             case VARBINARY:

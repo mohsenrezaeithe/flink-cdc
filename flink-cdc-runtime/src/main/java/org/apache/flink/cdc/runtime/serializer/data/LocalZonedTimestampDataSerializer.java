@@ -31,7 +31,7 @@ import java.io.IOException;
  * Serializer for {@link LocalZonedTimestampData}.
  *
  * <p>A {@link LocalZonedTimestampData} instance can be compactly serialized as a long value(=
- * millisecond) when the Timestamp type is compact. Otherwise it's serialized as a long value and a
+ * millisecond) when the Timestamp type is compact. Otherwise, it's serialized as a long value and a
  * int value.
  */
 public class LocalZonedTimestampDataSerializer extends TypeSerializer<LocalZonedTimestampData> {
@@ -179,13 +179,16 @@ public class LocalZonedTimestampDataSerializer extends TypeSerializer<LocalZoned
 
         @Override
         public TypeSerializerSchemaCompatibility<LocalZonedTimestampData>
-                resolveSchemaCompatibility(TypeSerializer<LocalZonedTimestampData> newSerializer) {
-            if (!(newSerializer instanceof LocalZonedTimestampDataSerializer)) {
+                resolveSchemaCompatibility(
+                        TypeSerializerSnapshot<LocalZonedTimestampData> serializerSnapshot) {
+            final TypeSerializer<LocalZonedTimestampData> serializer =
+                    serializerSnapshot.restoreSerializer();
+            if (!(serializer instanceof LocalZonedTimestampDataSerializer)) {
                 return TypeSerializerSchemaCompatibility.incompatible();
             }
 
             LocalZonedTimestampDataSerializer timestampDataSerializer =
-                    (LocalZonedTimestampDataSerializer) newSerializer;
+                    (LocalZonedTimestampDataSerializer) serializer;
             if (previousPrecision != timestampDataSerializer.precision) {
                 return TypeSerializerSchemaCompatibility.incompatible();
             } else {

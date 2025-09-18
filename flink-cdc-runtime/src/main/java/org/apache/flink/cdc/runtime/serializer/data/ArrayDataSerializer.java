@@ -22,7 +22,6 @@ import org.apache.flink.api.common.typeutils.TypeSerializerSchemaCompatibility;
 import org.apache.flink.api.common.typeutils.TypeSerializerSnapshot;
 import org.apache.flink.api.java.typeutils.runtime.DataInputViewStream;
 import org.apache.flink.api.java.typeutils.runtime.DataOutputViewStream;
-import org.apache.flink.cdc.common.annotation.VisibleForTesting;
 import org.apache.flink.cdc.common.data.ArrayData;
 import org.apache.flink.cdc.common.data.GenericArrayData;
 import org.apache.flink.cdc.common.data.binary.BinaryArrayData;
@@ -46,7 +45,7 @@ public class ArrayDataSerializer extends TypeSerializer<ArrayData> {
     private static final long serialVersionUID = 1L;
 
     private final DataType eleType;
-    private final TypeSerializer<Object> eleSer;
+    private final NullableSerializerWrapper<Object> eleSer;
     private final ArrayData.ElementGetter elementGetter;
     private transient BinaryArrayData reuseArray;
     private transient BinaryArrayWriter reuseWriter;
@@ -206,14 +205,17 @@ public class ArrayDataSerializer extends TypeSerializer<ArrayData> {
         return eleType.hashCode();
     }
 
-    @VisibleForTesting
-    public TypeSerializer getEleSer() {
-        return eleSer;
+    public DataType getEleType() {
+        return this.eleType;
+    }
+
+    public NullableSerializerWrapper<Object> getEleSer() {
+        return this.eleSer;
     }
 
     @Override
     public TypeSerializerSnapshot<ArrayData> snapshotConfiguration() {
-        return new ArrayDataSerializerSnapshot(eleType, eleSer);
+        return new ArrayDataSerializerSnapshot(this.getEleType(), this.getEleSer());
     }
 
     /** {@link TypeSerializerSnapshot} for {@link ArrayDataSerializer}. */
@@ -222,14 +224,14 @@ public class ArrayDataSerializer extends TypeSerializer<ArrayData> {
         private static final int CURRENT_VERSION = 3;
 
         private DataType previousType;
-        private TypeSerializer previousEleSer;
+        private NullableSerializerWrapper<Object> previousEleSer;
 
         @SuppressWarnings("unused")
         public ArrayDataSerializerSnapshot() {
             // this constructor is used when restoring from a checkpoint/savepoint.
         }
 
-        ArrayDataSerializerSnapshot(DataType eleType, TypeSerializer eleSer) {
+        ArrayDataSerializerSnapshot(DataType eleType, NullableSerializerWrapper<Object> eleSer) {
             this.previousType = eleType;
             this.previousEleSer = eleSer;
         }
@@ -262,19 +264,20 @@ public class ArrayDataSerializer extends TypeSerializer<ArrayData> {
 
         @Override
         public TypeSerializer<ArrayData> restoreSerializer() {
-            return new ArrayDataSerializer(previousType, previousEleSer);
+            return new ArrayDataSerializer(previousType, previousEleSer.getWrappedSerializer());
         }
 
         @Override
         public TypeSerializerSchemaCompatibility<ArrayData> resolveSchemaCompatibility(
-                TypeSerializer<ArrayData> newSerializer) {
-            if (!(newSerializer instanceof ArrayDataSerializer)) {
+                TypeSerializerSnapshot<ArrayData> serializerSnapshot) {
+            final TypeSerializer<ArrayData> serializer = serializerSnapshot.restoreSerializer();
+            if (!(serializer instanceof ArrayDataSerializer)) {
                 return TypeSerializerSchemaCompatibility.incompatible();
             }
 
-            ArrayDataSerializer newArrayDataSerializer = (ArrayDataSerializer) newSerializer;
-            if (!previousType.equals(newArrayDataSerializer.eleType)
-                    || !previousEleSer.equals(newArrayDataSerializer.eleSer)) {
+            ArrayDataSerializer newArrayDataSerializer = (ArrayDataSerializer) serializer;
+            if (!this.previousType.equals(newArrayDataSerializer.getEleType())
+                    || !this.previousEleSer.equals(newArrayDataSerializer.getEleSer())) {
                 return TypeSerializerSchemaCompatibility.incompatible();
             } else {
                 return TypeSerializerSchemaCompatibility.compatibleAsIs();

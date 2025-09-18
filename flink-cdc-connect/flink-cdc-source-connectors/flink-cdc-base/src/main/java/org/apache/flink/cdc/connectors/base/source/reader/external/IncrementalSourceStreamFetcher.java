@@ -17,6 +17,7 @@
 
 package org.apache.flink.cdc.connectors.base.source.reader.external;
 
+import org.apache.flink.cdc.connectors.base.config.SourceConfig;
 import org.apache.flink.cdc.connectors.base.source.meta.offset.Offset;
 import org.apache.flink.cdc.connectors.base.source.meta.split.FinishedSnapshotSplitInfo;
 import org.apache.flink.cdc.connectors.base.source.meta.split.SourceRecords;
@@ -50,10 +51,11 @@ import java.util.concurrent.TimeUnit;
 import static org.apache.flink.cdc.connectors.base.source.meta.wartermark.WatermarkEvent.isEndWatermarkEvent;
 
 /** Fetcher to fetch data from table split, the split is the stream split {@link StreamSplit}. */
-public class IncrementalSourceStreamFetcher implements Fetcher<SourceRecords, SourceSplitBase> {
+public class IncrementalSourceStreamFetcher<C extends SourceConfig>
+        implements Fetcher<SourceRecords, SourceSplitBase, C> {
     private static final Logger LOG = LoggerFactory.getLogger(IncrementalSourceStreamFetcher.class);
 
-    private final FetchTask.Context taskContext;
+    private final FetchTask.Context<C> taskContext;
     private final ExecutorService executorService;
     private final Set<TableId> pureStreamPhaseTables;
 
@@ -61,7 +63,7 @@ public class IncrementalSourceStreamFetcher implements Fetcher<SourceRecords, So
     private volatile boolean currentTaskRunning;
     private volatile Throwable readException;
 
-    private FetchTask<SourceSplitBase> streamFetchTask;
+    private FetchTask<SourceSplitBase, C> streamFetchTask;
     private StreamSplit currentStreamSplit;
     private Map<TableId, List<FinishedSnapshotSplitInfo>> finishedSplitsInfo;
     // tableId -> the max splitHighWatermark
@@ -70,7 +72,7 @@ public class IncrementalSourceStreamFetcher implements Fetcher<SourceRecords, So
 
     private static final long READER_CLOSE_TIMEOUT_SECONDS = 30L;
 
-    public IncrementalSourceStreamFetcher(FetchTask.Context taskContext, int subTaskId) {
+    public IncrementalSourceStreamFetcher(FetchTask.Context<C> taskContext, int subTaskId) {
         this.taskContext = taskContext;
         ThreadFactory threadFactory =
                 new ThreadFactoryBuilder().setNameFormat("debezium-reader-" + subTaskId).build();
@@ -81,7 +83,7 @@ public class IncrementalSourceStreamFetcher implements Fetcher<SourceRecords, So
     }
 
     @Override
-    public void submitTask(FetchTask<SourceSplitBase> fetchTask) {
+    public void submitTask(FetchTask<SourceSplitBase, C> fetchTask) {
         this.streamFetchTask = fetchTask;
         this.currentStreamSplit = fetchTask.getSplit().asStreamSplit();
         configureFilter();

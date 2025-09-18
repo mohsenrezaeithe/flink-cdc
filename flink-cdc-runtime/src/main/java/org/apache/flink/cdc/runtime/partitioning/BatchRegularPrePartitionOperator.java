@@ -29,7 +29,6 @@ import org.apache.flink.cdc.runtime.operators.schema.regular.SchemaOperator;
 import org.apache.flink.cdc.runtime.serializer.event.EventSerializer;
 import org.apache.flink.runtime.state.StateSnapshotContext;
 import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
-import org.apache.flink.streaming.api.operators.ChainingStrategy;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
@@ -58,7 +57,6 @@ public class BatchRegularPrePartitionOperator extends AbstractStreamOperator<Par
 
     public BatchRegularPrePartitionOperator(
             int downstreamParallelism, HashFunctionProvider<DataChangeEvent> hashFunctionProvider) {
-        this.chainingStrategy = ChainingStrategy.ALWAYS;
         this.downstreamParallelism = downstreamParallelism;
         this.hashFunctionProvider = hashFunctionProvider;
     }
@@ -87,7 +85,7 @@ public class BatchRegularPrePartitionOperator extends AbstractStreamOperator<Par
         }
     }
 
-    private void partitionBy(DataChangeEvent dataChangeEvent) throws Exception {
+    private void partitionBy(DataChangeEvent dataChangeEvent) {
         output.collect(
                 new StreamRecord<>(
                         PartitioningEvent.ofRegular(
@@ -115,7 +113,7 @@ public class BatchRegularPrePartitionOperator extends AbstractStreamOperator<Par
             throw new RuntimeException(
                     String.format("Failed to request latest schema for table \"%s\"", tableId), e);
         }
-        if (!schema.isPresent()) {
+        if (schema.isEmpty()) {
             throw new IllegalStateException(
                     String.format(
                             "Schema is never registered or outdated for table \"%s\"", tableId));

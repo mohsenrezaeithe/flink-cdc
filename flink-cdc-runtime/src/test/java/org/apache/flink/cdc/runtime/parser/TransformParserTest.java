@@ -241,37 +241,37 @@ class TransformParserTest {
                 "timestampDiff(\"SECOND\", dt1, dt2, __time_zone__)");
         testFilterExpression(
                 "timestamp_diff('second', dt1, dt2)",
-                "timestampDiff(\"second\", dt1, dt2, __time_zone__)");
+                "timestampDiff(\"SECOND\", dt1, dt2, __time_zone__)");
         testFilterExpression(
                 "TIMESTAMP_DIFF('MINUTE', dt1, dt2)",
                 "timestampDiff(\"MINUTE\", dt1, dt2, __time_zone__)");
         testFilterExpression(
                 "timestamp_diff('minute', dt1, dt2)",
-                "timestampDiff(\"minute\", dt1, dt2, __time_zone__)");
+                "timestampDiff(\"MINUTE\", dt1, dt2, __time_zone__)");
         testFilterExpression(
                 "TIMESTAMP_DIFF('HOUR', dt1, dt2)",
                 "timestampDiff(\"HOUR\", dt1, dt2, __time_zone__)");
         testFilterExpression(
                 "timestamp_diff('hour', dt1, dt2)",
-                "timestampDiff(\"hour\", dt1, dt2, __time_zone__)");
+                "timestampDiff(\"HOUR\", dt1, dt2, __time_zone__)");
         testFilterExpression(
                 "TIMESTAMP_DIFF('DAY', dt1, dt2)",
                 "timestampDiff(\"DAY\", dt1, dt2, __time_zone__)");
         testFilterExpression(
                 "timestamp_diff('day', dt1, dt2)",
-                "timestampDiff(\"day\", dt1, dt2, __time_zone__)");
+                "timestampDiff(\"DAY\", dt1, dt2, __time_zone__)");
         testFilterExpression(
                 "TIMESTAMP_DIFF('MONTH', dt1, dt2)",
                 "timestampDiff(\"MONTH\", dt1, dt2, __time_zone__)");
         testFilterExpression(
                 "timestamp_diff('month', dt1, dt2)",
-                "timestampDiff(\"month\", dt1, dt2, __time_zone__)");
+                "timestampDiff(\"MONTH\", dt1, dt2, __time_zone__)");
         testFilterExpression(
                 "TIMESTAMP_DIFF('YEAR', dt1, dt2)",
                 "timestampDiff(\"YEAR\", dt1, dt2, __time_zone__)");
         testFilterExpression(
                 "timestamp_diff('year', dt1, dt2)",
-                "timestampDiff(\"year\", dt1, dt2, __time_zone__)");
+                "timestampDiff(\"YEAR\", dt1, dt2, __time_zone__)");
         testFilterExpression(
                 "TIMESTAMPDIFF(SECOND, dt1, dt2)",
                 "timestampdiff(\"SECOND\", dt1, dt2, __time_zone__)");
@@ -393,40 +393,36 @@ class TransformParserTest {
     @Test
     public void testTranslateFilterToJaninoExpressionError() {
         Assertions.assertThatThrownBy(
-                        () -> {
-                            TransformParser.translateFilterExpressionToJaninoExpression(
-                                    "TIMESTAMPDIFF(SECONDS, dt1, dt2)",
-                                    Collections.emptyList(),
-                                    Collections.emptyMap());
-                        })
+                        () ->
+                                TransformParser.translateFilterExpressionToJaninoExpression(
+                                        "TIMESTAMPDIFF(SECONDS, dt1, dt2)",
+                                        Collections.emptyList(),
+                                        Collections.emptyMap()))
                 .isExactlyInstanceOf(ParseException.class)
-                .hasMessage("Statements can not be parsed.");
+                .hasMessage("Unsupported time interval unit in timestamp diff function: SECONDS");
         Assertions.assertThatThrownBy(
-                        () -> {
-                            TransformParser.translateFilterExpressionToJaninoExpression(
-                                    "TIMESTAMPDIFF(QUARTER, dt1, dt2)",
-                                    Collections.emptyList(),
-                                    Collections.emptyMap());
-                        })
+                        () ->
+                                TransformParser.translateFilterExpressionToJaninoExpression(
+                                        "TIMESTAMPDIFF(QUARTER, dt1, dt2)",
+                                        Collections.emptyList(),
+                                        Collections.emptyMap()))
                 .isExactlyInstanceOf(ParseException.class)
                 .hasMessage(
                         "Unsupported time interval unit in timestamp diff function: \"QUARTER\"");
         Assertions.assertThatThrownBy(
-                        () -> {
-                            TransformParser.translateFilterExpressionToJaninoExpression(
-                                    "TIMESTAMPADD(SECONDS, dt1, dt2)",
-                                    Collections.emptyList(),
-                                    Collections.emptyMap());
-                        })
+                        () ->
+                                TransformParser.translateFilterExpressionToJaninoExpression(
+                                        "TIMESTAMPADD(SECONDS, dt1, dt2)",
+                                        Collections.emptyList(),
+                                        Collections.emptyMap()))
                 .isExactlyInstanceOf(ParseException.class)
-                .hasMessage("Statements can not be parsed.");
+                .hasMessage("Unsupported time interval unit in timestamp add function: SECONDS");
         Assertions.assertThatThrownBy(
-                        () -> {
-                            TransformParser.translateFilterExpressionToJaninoExpression(
-                                    "TIMESTAMPADD(QUARTER, dt1, dt2)",
-                                    Collections.emptyList(),
-                                    Collections.emptyMap());
-                        })
+                        () ->
+                                TransformParser.translateFilterExpressionToJaninoExpression(
+                                        "TIMESTAMPADD(QUARTER, dt1, dt2)",
+                                        Collections.emptyList(),
+                                        Collections.emptyMap()))
                 .isExactlyInstanceOf(ParseException.class)
                 .hasMessage(
                         "Unsupported time interval unit in timestamp add function: \"QUARTER\"");

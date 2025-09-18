@@ -57,7 +57,7 @@ import static org.apache.flink.cdc.connectors.mongodb.source.utils.MongoUtils.cl
 import static org.apache.flink.cdc.connectors.mongodb.source.utils.MongoUtils.collectionFor;
 
 /** The task to work for fetching data of MongoDB collection snapshot split . */
-public class MongoDBScanFetchTask extends AbstractScanFetchTask {
+public class MongoDBScanFetchTask extends AbstractScanFetchTask<MongoDBSourceConfig> {
 
     private static final Logger LOG = LoggerFactory.getLogger(MongoDBScanFetchTask.class);
 
@@ -66,7 +66,7 @@ public class MongoDBScanFetchTask extends AbstractScanFetchTask {
     }
 
     @Override
-    protected void executeDataSnapshot(Context context) throws Exception {
+    protected void executeDataSnapshot(Context<MongoDBSourceConfig> context) throws Exception {
         ChangeEventQueue<DataChangeEvent> changeEventQueue = context.getQueue();
         MongoDBFetchTaskContext taskContext = (MongoDBFetchTaskContext) context;
         MongoDBSourceConfig sourceConfig = taskContext.getSourceConfig();
@@ -119,10 +119,7 @@ public class MongoDBScanFetchTask extends AbstractScanFetchTask {
 
         } catch (Exception e) {
             taskRunning = false;
-            LOG.error(
-                    String.format(
-                            "Execute snapshot read subtask for mongo split %s fail", snapshotSplit),
-                    e);
+            LOG.error("Execute snapshot read subtask for mongo split {} fail", snapshotSplit, e);
             throw e;
         } finally {
             if (cursor != null) {
@@ -132,7 +129,8 @@ public class MongoDBScanFetchTask extends AbstractScanFetchTask {
     }
 
     @Override
-    protected void executeBackfillTask(Context context, StreamSplit backfillStreamSplit)
+    protected void executeBackfillTask(
+            Context<MongoDBSourceConfig> context, StreamSplit backfillStreamSplit)
             throws Exception {
         MongoDBStreamFetchTask backfillStreamTask = new MongoDBStreamFetchTask(backfillStreamSplit);
         backfillStreamTask.execute(context);
@@ -140,7 +138,7 @@ public class MongoDBScanFetchTask extends AbstractScanFetchTask {
 
     @Override
     protected void dispatchLowWaterMarkEvent(
-            Context context, SourceSplitBase split, Offset lowWatermark)
+            Context<MongoDBSourceConfig> context, SourceSplitBase split, Offset lowWatermark)
             throws InterruptedException {
         ChangeEventQueue<DataChangeEvent> changeEventQueue = context.getQueue();
         changeEventQueue.enqueue(
@@ -156,7 +154,7 @@ public class MongoDBScanFetchTask extends AbstractScanFetchTask {
 
     @Override
     protected void dispatchHighWaterMarkEvent(
-            Context context, SourceSplitBase split, Offset highWatermark)
+            Context<MongoDBSourceConfig> context, SourceSplitBase split, Offset highWatermark)
             throws InterruptedException {
         ChangeEventQueue<DataChangeEvent> changeEventQueue = context.getQueue();
         changeEventQueue.enqueue(
@@ -172,7 +170,7 @@ public class MongoDBScanFetchTask extends AbstractScanFetchTask {
 
     @Override
     protected void dispatchEndWaterMarkEvent(
-            Context context, SourceSplitBase split, Offset endWatermark)
+            Context<MongoDBSourceConfig> context, SourceSplitBase split, Offset endWatermark)
             throws InterruptedException {
         ChangeEventQueue<DataChangeEvent> changeEventQueue = context.getQueue();
         changeEventQueue.enqueue(

@@ -86,7 +86,7 @@ public class BinlogSplitReader implements DebeziumReader<SourceRecords, MySqlSpl
     // tableId -> the max splitHighWatermark
     private Map<TableId, BinlogOffset> maxSplitHighWatermarkMap;
     private final Set<TableId> pureBinlogPhaseTables;
-    private Predicate capturedTableFilter;
+    private Predicate<TableId> capturedTableFilter;
     private final StoppableChangeEventSourceContext changeEventSourceContext =
             new StoppableChangeEventSourceContext();
     private final boolean isParsingOnLineSchemaChanges;
@@ -144,9 +144,8 @@ public class BinlogSplitReader implements DebeziumReader<SourceRecords, MySqlSpl
                                 statefulTaskContext.getOffsetContext());
                     } catch (Throwable t) {
                         LOG.error(
-                                String.format(
-                                        "Execute binlog read task for mysql split %s fail",
-                                        currentBinlogSplit),
+                                "Execute binlog read task for mysql split {} fail",
+                                currentBinlogSplit,
                                 t);
                         readException = t;
                     }

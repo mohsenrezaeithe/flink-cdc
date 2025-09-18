@@ -18,6 +18,7 @@
 package org.apache.flink.cdc.connectors.base.source.reader.external;
 
 import org.apache.flink.cdc.common.annotation.Experimental;
+import org.apache.flink.cdc.connectors.base.config.SourceConfig;
 import org.apache.flink.cdc.connectors.base.source.meta.split.SnapshotSplit;
 import org.apache.flink.cdc.connectors.base.source.meta.split.StreamSplit;
 
@@ -30,10 +31,10 @@ import java.util.Iterator;
  * or stream split {@link StreamSplit}.
  */
 @Experimental
-public interface Fetcher<T, Split> {
+public interface Fetcher<T, Split, C extends SourceConfig> {
 
     /** Add to task to fetch, this should call only when the reader is idle. */
-    void submitTask(FetchTask<Split> fetchTask);
+    void submitTask(FetchTask<Split, C> fetchTask);
 
     /**
      * Fetched records from data source. The method should return null when reaching the end of the
