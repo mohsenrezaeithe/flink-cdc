@@ -22,7 +22,7 @@ import org.apache.flink.api.connector.sink2.Committer;
 import org.apache.flink.api.connector.sink2.CommitterInitContext;
 import org.apache.flink.api.connector.sink2.Sink;
 import org.apache.flink.api.connector.sink2.SinkWriter;
-import org.apache.flink.api.connector.sink2.TwoPhaseCommittingSink;
+import org.apache.flink.api.connector.sink2.SupportsCommitter;
 import org.apache.flink.api.connector.sink2.WriterInitContext;
 import org.apache.flink.cdc.common.event.Event;
 import org.apache.flink.cdc.common.event.TableId;
@@ -33,9 +33,9 @@ import org.apache.flink.metrics.groups.SinkCommitterMetricGroup;
 import org.apache.flink.streaming.api.connector.sink2.CommittableMessage;
 import org.apache.flink.streaming.api.connector.sink2.CommittableMessageTypeInfo;
 import org.apache.flink.streaming.api.connector.sink2.CommittableWithLineage;
-import org.apache.flink.streaming.api.connector.sink2.WithPostCommitTopology;
-import org.apache.flink.streaming.api.connector.sink2.WithPreCommitTopology;
-import org.apache.flink.streaming.api.connector.sink2.WithPreWriteTopology;
+import org.apache.flink.streaming.api.connector.sink2.SupportsPostCommitTopology;
+import org.apache.flink.streaming.api.connector.sink2.SupportsPreCommitTopology;
+import org.apache.flink.streaming.api.connector.sink2.SupportsPreWriteTopology;
 import org.apache.flink.streaming.api.datastream.DataStream;
 
 import java.time.ZoneId;
@@ -45,10 +45,10 @@ import java.util.Objects;
 /** A {@link Sink} implementation for Apache Iceberg. */
 public class IcebergSink
         implements Sink<Event>,
-                WithPreWriteTopology<Event>,
-                WithPreCommitTopology<Event, WriteResultWrapper>,
-                TwoPhaseCommittingSink<Event, WriteResultWrapper>,
-                WithPostCommitTopology<Event, WriteResultWrapper> {
+                SupportsPreWriteTopology<Event>,
+                SupportsPreCommitTopology<WriteResultWrapper, WriteResultWrapper>,
+                SupportsCommitter<WriteResultWrapper>,
+                SupportsPostCommitTopology<WriteResultWrapper> {
 
     protected final Map<String, String> catalogOptions;
     protected final Map<String, String> tableOptions;
@@ -74,11 +74,6 @@ public class IcebergSink
     }
 
     @Override
-    public Committer<WriteResultWrapper> createCommitter() {
-        return new IcebergCommitter(catalogOptions);
-    }
-
-    @Override
     public Committer<WriteResultWrapper> createCommitter(
             CommitterInitContext committerInitContext) {
         SinkCommitterMetricGroup metricGroup = committerInitContext.metricGroup();
@@ -88,15 +83,6 @@ public class IcebergSink
     @Override
     public SimpleVersionedSerializer<WriteResultWrapper> getCommittableSerializer() {
         return new WriteResultWrapperSerializer();
-    }
-
-    @Override
-    public SinkWriter<Event> createWriter(InitContext context) {
-        return new IcebergWriter(
-                catalogOptions,
-                context.getTaskInfo().getIndexOfThisSubtask(),
-                context.getTaskInfo().getAttemptNumber(),
-                zoneId);
     }
 
     @Override

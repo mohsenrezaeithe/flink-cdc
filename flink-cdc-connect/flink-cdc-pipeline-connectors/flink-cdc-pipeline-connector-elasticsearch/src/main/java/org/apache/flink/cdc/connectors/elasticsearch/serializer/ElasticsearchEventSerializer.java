@@ -17,8 +17,8 @@
 
 package org.apache.flink.cdc.connectors.elasticsearch.serializer;
 
-import org.apache.flink.api.connector.sink2.Sink;
 import org.apache.flink.api.connector.sink2.SinkWriter;
+import org.apache.flink.api.connector.sink2.WriterInitContext;
 import org.apache.flink.cdc.common.data.RecordData;
 import org.apache.flink.cdc.common.event.AddColumnEvent;
 import org.apache.flink.cdc.common.event.CreateTableEvent;
@@ -253,7 +253,7 @@ public class ElasticsearchEventSerializer implements ElementConverter<Event, Bul
     }
 
     @Override
-    public void open(Sink.InitContext context) {
+    public void open(WriterInitContext context) {
         ElementConverter.super.open(context);
     }
 }

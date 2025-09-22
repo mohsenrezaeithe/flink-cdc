@@ -98,7 +98,6 @@ class SqlServerTableFactoryTest {
                         MY_PASSWORD,
                         PROPERTIES,
                         StartupOptions.initial(),
-                        SourceOptions.SCAN_INCREMENTAL_SNAPSHOT_ENABLED.defaultValue(),
                         SourceOptions.SCAN_INCREMENTAL_SNAPSHOT_CHUNK_SIZE.defaultValue(),
                         SourceOptions.CHUNK_META_GROUP_SIZE.defaultValue(),
                         SourceOptions.SCAN_SNAPSHOT_FETCH_SIZE.defaultValue(),
@@ -145,7 +144,6 @@ class SqlServerTableFactoryTest {
                         MY_PASSWORD,
                         PROPERTIES,
                         StartupOptions.initial(),
-                        SourceOptions.SCAN_INCREMENTAL_SNAPSHOT_ENABLED.defaultValue(),
                         8000,
                         3000,
                         100,
@@ -186,7 +184,6 @@ class SqlServerTableFactoryTest {
                         MY_PASSWORD,
                         dbzProperties,
                         StartupOptions.initial(),
-                        SourceOptions.SCAN_INCREMENTAL_SNAPSHOT_ENABLED.defaultValue(),
                         SourceOptions.SCAN_INCREMENTAL_SNAPSHOT_CHUNK_SIZE.defaultValue(),
                         SourceOptions.CHUNK_META_GROUP_SIZE.defaultValue(),
                         SourceOptions.SCAN_SNAPSHOT_FETCH_SIZE.defaultValue(),
@@ -228,7 +225,6 @@ class SqlServerTableFactoryTest {
                         MY_PASSWORD,
                         PROPERTIES,
                         StartupOptions.initial(),
-                        SourceOptions.SCAN_INCREMENTAL_SNAPSHOT_ENABLED.defaultValue(),
                         SourceOptions.SCAN_INCREMENTAL_SNAPSHOT_CHUNK_SIZE.defaultValue(),
                         SourceOptions.CHUNK_META_GROUP_SIZE.defaultValue(),
                         SourceOptions.SCAN_SNAPSHOT_FETCH_SIZE.defaultValue(),
@@ -268,16 +264,18 @@ class SqlServerTableFactoryTest {
 
     private static DynamicTableSource createTableSource(
             ResolvedSchema schema, Map<String, String> options) {
-        return FactoryUtil.createTableSource(
+        return FactoryUtil.createDynamicTableSource(
                 null,
                 ObjectIdentifier.of("default", "default", "t1"),
                 new ResolvedCatalogTable(
-                        CatalogTable.of(
-                                Schema.newBuilder().fromResolvedSchema(schema).build(),
-                                "mock source",
-                                new ArrayList<>(),
-                                options),
+                        CatalogTable.newBuilder()
+                                .schema(Schema.newBuilder().fromResolvedSchema(schema).build())
+                                .comment("mock source")
+                                .partitionKeys(new ArrayList<>())
+                                .options(options)
+                                .build(),
                         schema),
+                new HashMap<>(),
                 new Configuration(),
                 SqlServerTableFactoryTest.class.getClassLoader(),
                 false);

@@ -21,7 +21,6 @@ import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.cdc.common.annotation.VisibleForTesting;
 import org.apache.flink.cdc.connectors.mysql.source.MySqlSource;
 import org.apache.flink.cdc.debezium.DebeziumDeserializationSchema;
-import org.apache.flink.cdc.debezium.DebeziumSourceFunction;
 import org.apache.flink.cdc.debezium.table.MetadataConverter;
 import org.apache.flink.cdc.debezium.table.RowDataDebeziumDeserializeSchema;
 import org.apache.flink.table.catalog.ObjectPath;
@@ -29,13 +28,16 @@ import org.apache.flink.table.catalog.ResolvedSchema;
 import org.apache.flink.table.connector.ChangelogMode;
 import org.apache.flink.table.connector.source.DynamicTableSource;
 import org.apache.flink.table.connector.source.ScanTableSource;
-import org.apache.flink.table.connector.source.SourceFunctionProvider;
 import org.apache.flink.table.connector.source.SourceProvider;
 import org.apache.flink.table.connector.source.abilities.SupportsReadingMetadata;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.types.DataType;
 import org.apache.flink.table.types.logical.RowType;
+import org.apache.flink.util.Preconditions;
 
+import io.debezium.config.CommonConnectorConfig;
+import io.debezium.connector.mysql.MySqlConnectorConfig;
+import io.debezium.engine.DebeziumEngine;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -48,16 +50,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-
-import static io.debezium.config.CommonConnectorConfig.TOMBSTONES_ON_DELETE;
-import static io.debezium.connector.mysql.MySqlConnectorConfig.SNAPSHOT_MODE;
-import static io.debezium.engine.DebeziumEngine.OFFSET_FLUSH_INTERVAL_MS_PROP;
-import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
  * A {@link DynamicTableSource} that describes how to create a MySQL binlog source from a logical
@@ -67,9 +63,9 @@ public class MySqlTableSource implements ScanTableSource, SupportsReadingMetadat
     private static final Logger LOG = LoggerFactory.getLogger(MySqlTableSource.class);
     private final Set<String> exceptDbzProperties =
             Stream.of(
-                            SNAPSHOT_MODE.name(),
-                            OFFSET_FLUSH_INTERVAL_MS_PROP,
-                            TOMBSTONES_ON_DELETE.name())
+                            MySqlConnectorConfig.SNAPSHOT_MODE.name(),
+                            DebeziumEngine.OFFSET_FLUSH_INTERVAL_MS_PROP,
+                            CommonConnectorConfig.TOMBSTONES_ON_DELETE.name())
                     .collect(Collectors.toSet());
 
     private final ResolvedSchema physicalSchema;
@@ -82,7 +78,6 @@ public class MySqlTableSource implements ScanTableSource, SupportsReadingMetadat
     private final String tableName;
     private final ZoneId serverTimeZone;
     private final Properties dbzProperties;
-    private final boolean enableParallelRead;
     private final int splitSize;
     private final int splitMetaGroupSize;
     private final int fetchSize;
@@ -125,7 +120,6 @@ public class MySqlTableSource implements ScanTableSource, SupportsReadingMetadat
             ZoneId serverTimeZone,
             Properties dbzProperties,
             @Nullable String serverId,
-            boolean enableParallelRead,
             int splitSize,
             int splitMetaGroupSize,
             int fetchSize,
@@ -147,15 +141,14 @@ public class MySqlTableSource implements ScanTableSource, SupportsReadingMetadat
             boolean appendOnly) {
         this.physicalSchema = physicalSchema;
         this.port = port;
-        this.hostname = checkNotNull(hostname);
-        this.database = checkNotNull(database);
-        this.tableName = checkNotNull(tableName);
-        this.username = checkNotNull(username);
-        this.password = checkNotNull(password);
+        this.hostname = Preconditions.checkNotNull(hostname);
+        this.database = Preconditions.checkNotNull(database);
+        this.tableName = Preconditions.checkNotNull(tableName);
+        this.username = Preconditions.checkNotNull(username);
+        this.password = Preconditions.checkNotNull(password);
         this.serverId = serverId;
         this.serverTimeZone = serverTimeZone;
         this.dbzProperties = dbzProperties;
-        this.enableParallelRead = enableParallelRead;
         this.splitSize = splitSize;
         this.splitMetaGroupSize = splitMetaGroupSize;
         this.fetchSize = fetchSize;
@@ -207,60 +200,41 @@ public class MySqlTableSource implements ScanTableSource, SupportsReadingMetadat
                                 MySqlDeserializationConverterFactory.instance())
                         .setAppendOnly(appendOnly)
                         .build();
-        if (enableParallelRead) {
-            MySqlSource<RowData> parallelSource =
-                    MySqlSource.<RowData>builder()
-                            .hostname(hostname)
-                            .port(port)
-                            .databaseList(database)
-                            // MySQL debezium connector will use the regular expressions to match
-                            // the fully-qualified table identifiers of tables.
-                            // We need use "\\." insteadof "." .
-                            .tableList(database + "\\." + tableName)
-                            .username(username)
-                            .password(password)
-                            .serverTimeZone(serverTimeZone.toString())
-                            .serverId(serverId)
-                            .splitSize(splitSize)
-                            .splitMetaGroupSize(splitMetaGroupSize)
-                            .distributionFactorUpper(distributionFactorUpper)
-                            .distributionFactorLower(distributionFactorLower)
-                            .fetchSize(fetchSize)
-                            .connectTimeout(connectTimeout)
-                            .connectMaxRetries(connectMaxRetries)
-                            .connectionPoolSize(connectionPoolSize)
-                            .debeziumProperties(getParallelDbzProperties(dbzProperties))
-                            .startupOptions(startupOptions)
-                            .deserializer(deserializer)
-                            .scanNewlyAddedTableEnabled(scanNewlyAddedTableEnabled)
-                            .closeIdleReaders(closeIdleReaders)
-                            .jdbcProperties(jdbcProperties)
-                            .heartbeatInterval(heartbeatInterval)
-                            .chunkKeyColumn(new ObjectPath(database, tableName), chunkKeyColumn)
-                            .skipSnapshotBackfill(skipSnapshotBackFill)
-                            .parseOnLineSchemaChanges(parseOnlineSchemaChanges)
-                            .useLegacyJsonFormat(useLegacyJsonFormat)
-                            .assignUnboundedChunkFirst(assignUnboundedChunkFirst)
-                            .build();
-            return SourceProvider.of(parallelSource);
-        } else {
-            org.apache.flink.cdc.connectors.mysql.MySqlSource.Builder<RowData> builder =
-                    org.apache.flink.cdc.connectors.mysql.MySqlSource.<RowData>builder()
-                            .hostname(hostname)
-                            .port(port)
-                            .databaseList(database)
-                            .tableList(database + "\\." + tableName)
-                            .username(username)
-                            .password(password)
-                            .serverTimeZone(serverTimeZone.toString())
-                            .debeziumProperties(dbzProperties)
-                            .startupOptions(startupOptions)
-                            .deserializer(deserializer);
-            Optional.ofNullable(serverId)
-                    .ifPresent(serverId -> builder.serverId(Integer.parseInt(serverId)));
-            DebeziumSourceFunction<RowData> sourceFunction = builder.build();
-            return SourceFunctionProvider.of(sourceFunction, false);
-        }
+        MySqlSource<RowData> parallelSource =
+                MySqlSource.<RowData>builder()
+                        .hostname(hostname)
+                        .port(port)
+                        .databaseList(database)
+                        // MySQL debezium connector will use the regular expressions to match
+                        // the fully-qualified table identifiers of tables.
+                        // We need use "\\." insteadof "." .
+                        .tableList(database + "\\." + tableName)
+                        .username(username)
+                        .password(password)
+                        .serverTimeZone(serverTimeZone.toString())
+                        .serverId(serverId)
+                        .splitSize(splitSize)
+                        .splitMetaGroupSize(splitMetaGroupSize)
+                        .distributionFactorUpper(distributionFactorUpper)
+                        .distributionFactorLower(distributionFactorLower)
+                        .fetchSize(fetchSize)
+                        .connectTimeout(connectTimeout)
+                        .connectMaxRetries(connectMaxRetries)
+                        .connectionPoolSize(connectionPoolSize)
+                        .debeziumProperties(getParallelDbzProperties(dbzProperties))
+                        .startupOptions(startupOptions)
+                        .deserializer(deserializer)
+                        .scanNewlyAddedTableEnabled(scanNewlyAddedTableEnabled)
+                        .closeIdleReaders(closeIdleReaders)
+                        .jdbcProperties(jdbcProperties)
+                        .heartbeatInterval(heartbeatInterval)
+                        .chunkKeyColumn(new ObjectPath(database, tableName), chunkKeyColumn)
+                        .skipSnapshotBackfill(skipSnapshotBackFill)
+                        .parseOnLineSchemaChanges(parseOnlineSchemaChanges)
+                        .useLegacyJsonFormat(useLegacyJsonFormat)
+                        .assignUnboundedChunkFirst(assignUnboundedChunkFirst)
+                        .build();
+        return SourceProvider.of(parallelSource);
     }
 
     protected MetadataConverter[] getMetadataConverters() {
@@ -311,7 +285,6 @@ public class MySqlTableSource implements ScanTableSource, SupportsReadingMetadat
                         serverTimeZone,
                         dbzProperties,
                         serverId,
-                        enableParallelRead,
                         splitSize,
                         splitMetaGroupSize,
                         fetchSize,
@@ -346,7 +319,6 @@ public class MySqlTableSource implements ScanTableSource, SupportsReadingMetadat
         }
         MySqlTableSource that = (MySqlTableSource) o;
         return port == that.port
-                && enableParallelRead == that.enableParallelRead
                 && splitSize == that.splitSize
                 && splitMetaGroupSize == that.splitMetaGroupSize
                 && fetchSize == that.fetchSize
@@ -392,7 +364,6 @@ public class MySqlTableSource implements ScanTableSource, SupportsReadingMetadat
                 tableName,
                 serverTimeZone,
                 dbzProperties,
-                enableParallelRead,
                 splitSize,
                 splitMetaGroupSize,
                 fetchSize,

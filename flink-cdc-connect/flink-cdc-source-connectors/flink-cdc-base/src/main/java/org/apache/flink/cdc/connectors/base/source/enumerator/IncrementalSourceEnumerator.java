@@ -21,7 +21,6 @@ import org.apache.flink.api.connector.source.Boundedness;
 import org.apache.flink.api.connector.source.SourceEvent;
 import org.apache.flink.api.connector.source.SplitEnumerator;
 import org.apache.flink.api.connector.source.SplitEnumeratorContext;
-import org.apache.flink.cdc.common.annotation.Experimental;
 import org.apache.flink.cdc.connectors.base.config.SourceConfig;
 import org.apache.flink.cdc.connectors.base.source.assigner.HybridSplitAssigner;
 import org.apache.flink.cdc.connectors.base.source.assigner.SplitAssigner;
@@ -64,7 +63,6 @@ import static org.apache.flink.cdc.connectors.base.source.assigner.AssignerStatu
  * Incremental source enumerator that enumerates receive the split request and assign the split to
  * source readers.
  */
-@Experimental
 public class IncrementalSourceEnumerator
         implements SplitEnumerator<SourceSplitBase, PendingSplitsState> {
     private static final Logger LOG = LoggerFactory.getLogger(IncrementalSourceEnumerator.class);

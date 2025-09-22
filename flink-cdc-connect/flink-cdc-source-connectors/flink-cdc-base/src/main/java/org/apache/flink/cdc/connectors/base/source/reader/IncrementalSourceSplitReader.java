@@ -17,7 +17,6 @@
 
 package org.apache.flink.cdc.connectors.base.source.reader;
 
-import org.apache.flink.cdc.common.annotation.Experimental;
 import org.apache.flink.cdc.common.annotation.VisibleForTesting;
 import org.apache.flink.cdc.connectors.base.config.SourceConfig;
 import org.apache.flink.cdc.connectors.base.dialect.DataSourceDialect;
@@ -54,7 +53,6 @@ import static org.apache.flink.cdc.common.utils.Preconditions.checkState;
 import static org.apache.flink.cdc.connectors.base.source.meta.split.StreamSplit.STREAM_SPLIT_ID;
 
 /** Basic class read {@link SourceSplitBase} and return {@link SourceRecord}. */
-@Experimental
 public class IncrementalSourceSplitReader<C extends SourceConfig>
         implements SplitReader<SourceRecords, SourceSplitBase> {
 

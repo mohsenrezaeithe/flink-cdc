@@ -17,7 +17,6 @@
 
 package org.apache.flink.cdc.connectors.base.source.assigner.splitter;
 
-import org.apache.flink.cdc.common.annotation.Experimental;
 import org.apache.flink.cdc.connectors.base.config.JdbcSourceConfig;
 import org.apache.flink.cdc.connectors.base.dialect.JdbcDataSourceDialect;
 import org.apache.flink.cdc.connectors.base.source.assigner.state.ChunkSplitterState;
@@ -55,7 +54,6 @@ import static org.apache.flink.table.api.DataTypes.FIELD;
 import static org.apache.flink.table.api.DataTypes.ROW;
 
 /** The {@code ChunkSplitter} used to split table into a set of chunks for JDBC data source. */
-@Experimental
 public abstract class JdbcSourceChunkSplitter implements ChunkSplitter {
     private static final Logger LOG = LoggerFactory.getLogger(JdbcSourceChunkSplitter.class);
     protected final JdbcSourceConfig sourceConfig;

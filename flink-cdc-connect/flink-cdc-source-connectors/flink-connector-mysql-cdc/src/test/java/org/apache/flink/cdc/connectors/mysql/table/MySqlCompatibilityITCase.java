@@ -117,15 +117,13 @@ class MySqlCompatibilityITCase {
     private void testDifferentMySqlVersion(MySqlVersion version, boolean enableGtid)
             throws Exception {
         final MySqlContainer mySqlContainer =
-                (MySqlContainer)
-                        new MySqlContainer(version)
-                                .withConfigurationOverride(
-                                        buildCustomMySqlConfig(version, enableGtid))
-                                .withSetupSQL("docker/setup.sql")
-                                .withDatabaseName("flink-test")
-                                .withUsername("flinkuser")
-                                .withPassword("flinkpw")
-                                .withLogConsumer(new Slf4jLogConsumer(LOG));
+                new MySqlContainer(version)
+                        .withConfigurationOverride(buildCustomMySqlConfig(version, enableGtid))
+                        .withSetupSQL("docker/setup.sql")
+                        .withDatabaseName("flink-test")
+                        .withUsername("flinkuser")
+                        .withPassword("flinkpw")
+                        .withLogConsumer(new Slf4jLogConsumer(LOG));
 
         LOG.info("Starting containers...");
         Startables.deepStart(Stream.of(mySqlContainer)).join();
@@ -216,7 +214,7 @@ class MySqlCompatibilityITCase {
 
         assertEqualsInOrder(
                 Arrays.asList(expectedBinlog), fetchRows(iterator, expectedBinlog.length));
-        result.getJobClient().get().cancel().get();
+        result.getJobClient().orElseThrow().cancel().get();
         mySqlContainer.stop();
     }
 

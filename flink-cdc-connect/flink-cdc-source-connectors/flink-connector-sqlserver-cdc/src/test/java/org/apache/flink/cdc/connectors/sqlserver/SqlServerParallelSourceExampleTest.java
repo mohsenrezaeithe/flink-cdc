@@ -37,7 +37,7 @@ class SqlServerParallelSourceExampleTest extends SqlServerSourceTestBase {
         initializeSqlServerTable("inventory");
 
         SqlServerIncrementalSource<String> sqlServerSource =
-                new SqlServerSourceBuilder()
+                new SqlServerSourceBuilder<String>()
                         .hostname(MSSQL_SERVER_CONTAINER.getHost())
                         .port(MSSQL_SERVER_CONTAINER.getFirstMappedPort())
                         .databaseList("inventory")

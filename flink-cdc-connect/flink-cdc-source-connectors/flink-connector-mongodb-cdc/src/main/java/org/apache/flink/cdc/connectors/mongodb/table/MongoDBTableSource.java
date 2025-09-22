@@ -27,7 +27,6 @@ import org.apache.flink.table.catalog.ResolvedSchema;
 import org.apache.flink.table.connector.ChangelogMode;
 import org.apache.flink.table.connector.source.DynamicTableSource;
 import org.apache.flink.table.connector.source.ScanTableSource;
-import org.apache.flink.table.connector.source.SourceFunctionProvider;
 import org.apache.flink.table.connector.source.SourceProvider;
 import org.apache.flink.table.connector.source.abilities.SupportsReadingMetadata;
 import org.apache.flink.table.data.RowData;
@@ -79,7 +78,6 @@ public class MongoDBTableSource implements ScanTableSource, SupportsReadingMetad
     private final Integer pollAwaitTimeMillis;
     private final Integer heartbeatIntervalMillis;
     private final ZoneId localTimeZone;
-    private final boolean enableParallelRead;
     private final Integer splitMetaGroupSize;
     private final Integer splitSizeMB;
     private final Integer samplesPerChunk;
@@ -118,7 +116,6 @@ public class MongoDBTableSource implements ScanTableSource, SupportsReadingMetad
             @Nullable Integer pollAwaitTimeMillis,
             @Nullable Integer heartbeatIntervalMillis,
             ZoneId localTimeZone,
-            boolean enableParallelRead,
             @Nullable Integer splitMetaGroupSize,
             @Nullable Integer splitSizeMB,
             @Nullable Integer samplesPerChunk,
@@ -147,7 +144,6 @@ public class MongoDBTableSource implements ScanTableSource, SupportsReadingMetad
         this.localTimeZone = localTimeZone;
         this.producedDataType = physicalSchema.toPhysicalRowDataType();
         this.metadataKeys = Collections.emptyList();
-        this.enableParallelRead = enableParallelRead;
         this.splitMetaGroupSize = splitMetaGroupSize;
         this.splitSizeMB = splitSizeMB;
         this.samplesPerChunk = samplesPerChunk;
@@ -203,64 +199,37 @@ public class MongoDBTableSource implements ScanTableSource, SupportsReadingMetad
             collectionList = collection;
         } else {
             // Watching all changes on the cluster by default, we do nothing here
+            LOG.info(
+                    "MongoDB source will monitor all changes on the cluster, it's strongly recommended to specify "
+                            + "database and collection for better performance");
         }
 
-        if (enableParallelRead) {
-            MongoDBSourceBuilder<RowData> builder =
-                    MongoDBSource.<RowData>builder()
-                            .scheme(scheme)
-                            .hosts(hosts)
-                            .closeIdleReaders(closeIdlerReaders)
-                            .scanFullChangelog(enableFullDocPrePostImage)
-                            .startupOptions(startupOptions)
-                            .skipSnapshotBackfill(skipSnapshotBackfill)
-                            .scanNewlyAddedTableEnabled(scanNewlyAddedTableEnabled)
-                            .deserializer(deserializer)
-                            .disableCursorTimeout(noCursorTimeout)
-                            .assignUnboundedChunkFirst(assignUnboundedChunkFirst);
+        MongoDBSourceBuilder<RowData> builder =
+                MongoDBSource.<RowData>builder()
+                        .scheme(scheme)
+                        .hosts(hosts)
+                        .closeIdleReaders(closeIdlerReaders)
+                        .scanFullChangelog(enableFullDocPrePostImage)
+                        .startupOptions(startupOptions)
+                        .skipSnapshotBackfill(skipSnapshotBackfill)
+                        .scanNewlyAddedTableEnabled(scanNewlyAddedTableEnabled)
+                        .deserializer(deserializer)
+                        .disableCursorTimeout(noCursorTimeout)
+                        .assignUnboundedChunkFirst(assignUnboundedChunkFirst);
 
-            Optional.ofNullable(databaseList).ifPresent(builder::databaseList);
-            Optional.ofNullable(collectionList).ifPresent(builder::collectionList);
-            Optional.ofNullable(username).ifPresent(builder::username);
-            Optional.ofNullable(password).ifPresent(builder::password);
-            Optional.ofNullable(connectionOptions).ifPresent(builder::connectionOptions);
-            Optional.ofNullable(batchSize).ifPresent(builder::batchSize);
-            Optional.ofNullable(pollMaxBatchSize).ifPresent(builder::pollMaxBatchSize);
-            Optional.ofNullable(pollAwaitTimeMillis).ifPresent(builder::pollAwaitTimeMillis);
-            Optional.ofNullable(heartbeatIntervalMillis)
-                    .ifPresent(builder::heartbeatIntervalMillis);
-            Optional.ofNullable(splitMetaGroupSize).ifPresent(builder::splitMetaGroupSize);
-            Optional.ofNullable(splitSizeMB).ifPresent(builder::splitSizeMB);
-            Optional.ofNullable(samplesPerChunk).ifPresent(builder::samplesPerChunk);
-            return SourceProvider.of(builder.build());
-        } else {
-            org.apache.flink.cdc.connectors.mongodb.MongoDBSource.Builder<RowData> builder =
-                    org.apache.flink.cdc.connectors.mongodb.MongoDBSource.<RowData>builder()
-                            .scheme(scheme)
-                            .hosts(hosts)
-                            .scanFullChangelog(enableFullDocPrePostImage)
-                            .startupOptions(startupOptions)
-                            .deserializer(deserializer);
-
-            Optional.ofNullable(databaseList).ifPresent(builder::databaseList);
-            Optional.ofNullable(collectionList).ifPresent(builder::collectionList);
-            Optional.ofNullable(username).ifPresent(builder::username);
-            Optional.ofNullable(password).ifPresent(builder::password);
-            Optional.ofNullable(connectionOptions).ifPresent(builder::connectionOptions);
-            Optional.ofNullable(initialSnapshottingQueueSize)
-                    .ifPresent(builder::initialSnapshottingQueueSize);
-            Optional.ofNullable(initialSnapshottingMaxThreads)
-                    .ifPresent(builder::initialSnapshottingMaxThreads);
-            Optional.ofNullable(initialSnapshottingPipeline)
-                    .ifPresent(builder::initialSnapshottingPipeline);
-            Optional.ofNullable(batchSize).ifPresent(builder::batchSize);
-            Optional.ofNullable(pollMaxBatchSize).ifPresent(builder::pollMaxBatchSize);
-            Optional.ofNullable(pollAwaitTimeMillis).ifPresent(builder::pollAwaitTimeMillis);
-            Optional.ofNullable(heartbeatIntervalMillis)
-                    .ifPresent(builder::heartbeatIntervalMillis);
-
-            return SourceFunctionProvider.of(builder.build(), false);
-        }
+        Optional.ofNullable(databaseList).ifPresent(builder::databaseList);
+        Optional.ofNullable(collectionList).ifPresent(builder::collectionList);
+        Optional.ofNullable(username).ifPresent(builder::username);
+        Optional.ofNullable(password).ifPresent(builder::password);
+        Optional.ofNullable(connectionOptions).ifPresent(builder::connectionOptions);
+        Optional.ofNullable(batchSize).ifPresent(builder::batchSize);
+        Optional.ofNullable(pollMaxBatchSize).ifPresent(builder::pollMaxBatchSize);
+        Optional.ofNullable(pollAwaitTimeMillis).ifPresent(builder::pollAwaitTimeMillis);
+        Optional.ofNullable(heartbeatIntervalMillis).ifPresent(builder::heartbeatIntervalMillis);
+        Optional.ofNullable(splitMetaGroupSize).ifPresent(builder::splitMetaGroupSize);
+        Optional.ofNullable(splitSizeMB).ifPresent(builder::splitSizeMB);
+        Optional.ofNullable(samplesPerChunk).ifPresent(builder::samplesPerChunk);
+        return SourceProvider.of(builder.build());
     }
 
     protected MetadataConverter[] getMetadataConverters() {
@@ -315,7 +284,6 @@ public class MongoDBTableSource implements ScanTableSource, SupportsReadingMetad
                         pollAwaitTimeMillis,
                         heartbeatIntervalMillis,
                         localTimeZone,
-                        enableParallelRead,
                         splitMetaGroupSize,
                         splitSizeMB,
                         samplesPerChunk,
@@ -356,7 +324,6 @@ public class MongoDBTableSource implements ScanTableSource, SupportsReadingMetad
                 && Objects.equals(pollAwaitTimeMillis, that.pollAwaitTimeMillis)
                 && Objects.equals(heartbeatIntervalMillis, that.heartbeatIntervalMillis)
                 && Objects.equals(localTimeZone, that.localTimeZone)
-                && Objects.equals(enableParallelRead, that.enableParallelRead)
                 && Objects.equals(splitMetaGroupSize, that.splitMetaGroupSize)
                 && Objects.equals(splitSizeMB, that.splitSizeMB)
                 && Objects.equals(samplesPerChunk, that.samplesPerChunk)
@@ -390,7 +357,6 @@ public class MongoDBTableSource implements ScanTableSource, SupportsReadingMetad
                 pollAwaitTimeMillis,
                 heartbeatIntervalMillis,
                 localTimeZone,
-                enableParallelRead,
                 splitMetaGroupSize,
                 splitSizeMB,
                 samplesPerChunk,

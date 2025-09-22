@@ -29,12 +29,10 @@ import org.apache.flink.shaded.guava33.com.google.common.collect.ImmutableMap;
 
 import com.aliyun.odps.OdpsException;
 import com.aliyun.odps.TableSchema;
+import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.fail;
 
 /**
  * e2e test of SchemaEvolutionUtils, Note that the Emulator only supports uppercase input (However,
@@ -48,22 +46,18 @@ class SchemaEvolutionUtilsTest extends EmulatorTestBase {
     private static final String TEST_TABLE = "SCHEMA_EVOLUTION_TEST_TABLE";
 
     @BeforeEach
-    void testCreateTable() {
-        try {
-            SchemaEvolutionUtils.createTable(
-                    testOptions,
-                    TableId.tableId(TEST_TABLE),
-                    Schema.newBuilder()
-                            .physicalColumn("PK", DataTypes.BIGINT())
-                            .physicalColumn("ID1", DataTypes.BIGINT())
-                            .physicalColumn("ID2", DataTypes.BIGINT())
-                            .primaryKey("PK")
-                            .build());
-            assertThat(odpsInstance.tables().get(TEST_TABLE).getPrimaryKey())
-                    .isEqualTo(ImmutableList.of("PK"));
-        } catch (Exception e) {
-            fail(e.getMessage());
-        }
+    void testCreateTable() throws Exception {
+        SchemaEvolutionUtils.createTable(
+                testOptions,
+                TableId.tableId(TEST_TABLE),
+                Schema.newBuilder()
+                        .physicalColumn("PK", DataTypes.BIGINT())
+                        .physicalColumn("ID1", DataTypes.BIGINT())
+                        .physicalColumn("ID2", DataTypes.BIGINT())
+                        .primaryKey("PK")
+                        .build());
+        Assertions.assertThat(odpsInstance.tables().get(TEST_TABLE).getPrimaryKey())
+                .isEqualTo(ImmutableList.of("PK"));
     }
 
     @AfterEach
@@ -72,60 +66,48 @@ class SchemaEvolutionUtilsTest extends EmulatorTestBase {
     }
 
     @Test
-    void testAddColumn() throws OdpsException {
-        try {
-            SchemaEvolutionUtils.addColumns(
-                    testOptions,
-                    TableId.tableId(TEST_TABLE),
-                    ImmutableList.of(
-                            new AddColumnEvent.ColumnWithPosition(
-                                    Column.physicalColumn("ID3", DataTypes.BIGINT())),
-                            new AddColumnEvent.ColumnWithPosition(
-                                    Column.physicalColumn("NAME", DataTypes.STRING()))));
-            TableSchema schema = odpsInstance.tables().get(TEST_TABLE).getSchema();
+    void testAddColumn() throws Exception {
+        SchemaEvolutionUtils.addColumns(
+                testOptions,
+                TableId.tableId(TEST_TABLE),
+                ImmutableList.of(
+                        new AddColumnEvent.ColumnWithPosition(
+                                Column.physicalColumn("ID3", DataTypes.BIGINT())),
+                        new AddColumnEvent.ColumnWithPosition(
+                                Column.physicalColumn("NAME", DataTypes.STRING()))));
+        TableSchema schema = odpsInstance.tables().get(TEST_TABLE).getSchema();
 
-            assertThat(schema.getColumns()).hasSize(5);
-            assertThat(schema.getColumns().get(0).getName()).isEqualTo("PK");
-            assertThat(schema.getColumns().get(1).getName()).isEqualTo("ID1");
-            assertThat(schema.getColumns().get(2).getName()).isEqualTo("ID2");
-            assertThat(schema.getColumns().get(3).getName()).isEqualTo("ID3");
-            assertThat(schema.getColumns().get(4).getName()).isEqualTo("NAME");
-        } catch (Exception e) {
-            fail(e.getMessage());
-        }
+        Assertions.assertThat(schema.getColumns()).hasSize(5);
+        Assertions.assertThat(schema.getColumns().get(0).getName()).isEqualTo("PK");
+        Assertions.assertThat(schema.getColumns().get(1).getName()).isEqualTo("ID1");
+        Assertions.assertThat(schema.getColumns().get(2).getName()).isEqualTo("ID2");
+        Assertions.assertThat(schema.getColumns().get(3).getName()).isEqualTo("ID3");
+        Assertions.assertThat(schema.getColumns().get(4).getName()).isEqualTo("NAME");
     }
 
     @Test
-    void testDropColumn() throws OdpsException {
-        try {
-            SchemaEvolutionUtils.dropColumn(
-                    testOptions, TableId.tableId(TEST_TABLE), ImmutableList.of("ID1", "ID2"));
-            TableSchema schema = odpsInstance.tables().get(TEST_TABLE).getSchema();
+    void testDropColumn() throws Exception {
+        SchemaEvolutionUtils.dropColumn(
+                testOptions, TableId.tableId(TEST_TABLE), ImmutableList.of("ID1", "ID2"));
+        TableSchema schema = odpsInstance.tables().get(TEST_TABLE).getSchema();
 
-            assertThat(schema.getColumns()).hasSize(1);
-            assertThat(schema.getColumns().get(0).getName()).isEqualTo("PK");
-        } catch (Exception e) {
-            fail(e.getMessage());
-        }
+        Assertions.assertThat(schema.getColumns()).hasSize(1);
+        Assertions.assertThat(schema.getColumns().get(0).getName()).isEqualTo("PK");
     }
 
     @Test
-    void testRenameColumn() {
-        try {
-            TableSchema originSchema = odpsInstance.tables().get(TEST_TABLE).getSchema();
-            assertThat(originSchema.getColumns().get(1).getName()).isEqualTo("ID1");
-            assertThat(originSchema.getColumns().get(2).getName()).isEqualTo("ID2");
+    void testRenameColumn() throws Exception {
+        TableSchema originSchema = odpsInstance.tables().get(TEST_TABLE).getSchema();
+        Assertions.assertThat(originSchema.getColumns().get(1).getName()).isEqualTo("ID1");
+        Assertions.assertThat(originSchema.getColumns().get(2).getName()).isEqualTo("ID2");
 
-            SchemaEvolutionUtils.renameColumn(
-                    testOptions,
-                    TableId.tableId(TEST_TABLE),
-                    ImmutableMap.of("ID1", "ID1_NEW", "ID2", "ID2_NEW"));
+        SchemaEvolutionUtils.renameColumn(
+                testOptions,
+                TableId.tableId(TEST_TABLE),
+                ImmutableMap.of("ID1", "ID1_NEW", "ID2", "ID2_NEW"));
 
-            TableSchema expectSchema = odpsInstance.tables().get(TEST_TABLE).getSchema();
-            assertThat(expectSchema.getColumns().get(1).getName()).isEqualTo("ID1_NEW");
-            assertThat(expectSchema.getColumns().get(2).getName()).isEqualTo("ID2_NEW");
-        } catch (Exception e) {
-            fail(e.getMessage());
-        }
+        TableSchema expectSchema = odpsInstance.tables().get(TEST_TABLE).getSchema();
+        Assertions.assertThat(expectSchema.getColumns().get(1).getName()).isEqualTo("ID1_NEW");
+        Assertions.assertThat(expectSchema.getColumns().get(2).getName()).isEqualTo("ID2_NEW");
     }
 }

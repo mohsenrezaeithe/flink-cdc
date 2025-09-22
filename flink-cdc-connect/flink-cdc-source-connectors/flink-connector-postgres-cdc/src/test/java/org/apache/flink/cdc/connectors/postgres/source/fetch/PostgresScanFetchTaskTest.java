@@ -340,16 +340,17 @@ class PostgresScanFetchTaskTest extends PostgresTestBase {
             DataType dataType,
             SnapshotPhaseHooks snapshotPhaseHooks)
             throws Exception {
-        IncrementalSourceScanFetcher sourceScanFetcher =
-                new IncrementalSourceScanFetcher(taskContext, 0);
+        IncrementalSourceScanFetcher<JdbcSourceConfig> sourceScanFetcher =
+                new IncrementalSourceScanFetcher<>(taskContext, 0);
 
         List<SourceRecord> result = new ArrayList<>();
         for (int i = 0; i < scanSplitsNum; i++) {
             SnapshotSplit sqlSplit = snapshotSplits.get(i);
             if (sourceScanFetcher.isFinished()) {
-                FetchTask<SourceSplitBase> fetchTask =
+                FetchTask<SourceSplitBase, JdbcSourceConfig> fetchTask =
                         taskContext.getDataSourceDialect().createFetchTask(sqlSplit);
-                ((AbstractScanFetchTask) fetchTask).setSnapshotPhaseHooks(snapshotPhaseHooks);
+                ((AbstractScanFetchTask<JdbcSourceConfig>) fetchTask)
+                        .setSnapshotPhaseHooks(snapshotPhaseHooks);
                 sourceScanFetcher.submitTask(fetchTask);
             }
             Iterator<SourceRecords> res;
@@ -380,8 +381,8 @@ class PostgresScanFetchTaskTest extends PostgresTestBase {
         List<io.debezium.relational.TableId> discoverTables =
                 sourceDialect.discoverDataCollections(sourceConfig);
         OffsetFactory offsetFactory = new PostgresOffsetFactory();
-        final SnapshotSplitAssigner snapshotSplitAssigner =
-                new SnapshotSplitAssigner<JdbcSourceConfig>(
+        final SnapshotSplitAssigner<JdbcSourceConfig> snapshotSplitAssigner =
+                new SnapshotSplitAssigner<>(
                         sourceConfig,
                         DEFAULT_PARALLELISM,
                         discoverTables,

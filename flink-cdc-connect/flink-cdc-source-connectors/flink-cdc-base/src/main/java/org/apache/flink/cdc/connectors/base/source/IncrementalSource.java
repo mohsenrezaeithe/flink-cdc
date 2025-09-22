@@ -24,7 +24,6 @@ import org.apache.flink.api.connector.source.SourceReaderContext;
 import org.apache.flink.api.connector.source.SplitEnumerator;
 import org.apache.flink.api.connector.source.SplitEnumeratorContext;
 import org.apache.flink.api.java.typeutils.ResultTypeQueryable;
-import org.apache.flink.cdc.common.annotation.Experimental;
 import org.apache.flink.cdc.common.annotation.VisibleForTesting;
 import org.apache.flink.cdc.connectors.base.config.SourceConfig;
 import org.apache.flink.cdc.connectors.base.dialect.DataSourceDialect;
@@ -62,7 +61,6 @@ import java.util.function.Supplier;
  * Watermark Signal Algorithm which supports parallel reading snapshot of table and then continue to
  * capture data change by streaming reading.
  */
-@Experimental
 public class IncrementalSource<T, C extends SourceConfig>
         implements Source<T, SourceSplitBase, PendingSplitsState>, ResultTypeQueryable<T> {
 

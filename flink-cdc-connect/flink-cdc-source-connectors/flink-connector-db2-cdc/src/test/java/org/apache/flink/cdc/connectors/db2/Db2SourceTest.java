@@ -17,29 +17,37 @@
 
 package org.apache.flink.cdc.connectors.db2;
 
+import org.apache.flink.api.common.functions.DefaultOpenContext;
 import org.apache.flink.api.common.state.BroadcastState;
 import org.apache.flink.api.common.state.KeyedStateStore;
-import org.apache.flink.api.common.state.ListState;
-import org.apache.flink.api.common.state.ListStateDescriptor;
-import org.apache.flink.api.common.state.MapStateDescriptor;
 import org.apache.flink.api.common.state.OperatorStateStore;
+import org.apache.flink.api.common.state.v2.ListState;
+import org.apache.flink.api.common.state.v2.ListStateDescriptor;
+import org.apache.flink.api.common.state.v2.MapStateDescriptor;
+import org.apache.flink.api.common.state.v2.StateFuture;
+import org.apache.flink.api.common.state.v2.StateIterator;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.cdc.connectors.utils.AssertUtils;
 import org.apache.flink.cdc.connectors.utils.TestSourceContext;
 import org.apache.flink.cdc.debezium.DebeziumDeserializationSchema;
 import org.apache.flink.cdc.debezium.DebeziumSourceFunction;
-import org.apache.flink.configuration.Configuration;
+import org.apache.flink.core.state.StateFutureUtils;
 import org.apache.flink.core.testutils.CheckedThread;
 import org.apache.flink.runtime.state.FunctionInitializationContext;
 import org.apache.flink.runtime.state.StateSnapshotContextSynchronousImpl;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.util.MockStreamingRuntimeContext;
 import org.apache.flink.util.Collector;
+import org.apache.flink.util.FlinkRuntimeException;
 import org.apache.flink.util.Preconditions;
+import org.apache.flink.util.function.FunctionWithException;
+import org.apache.flink.util.function.ThrowingConsumer;
 
 import com.jayway.jsonpath.JsonPath;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.Test;
+import org.testcontainers.containers.Db2Container;
 
 import javax.annotation.Nullable;
 
@@ -48,6 +56,8 @@ import java.sql.Connection;
 import java.sql.Statement;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Iterator;
 import java.util.List;
 import java.util.OptionalLong;
 import java.util.Set;
@@ -56,12 +66,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
-
-import static org.apache.flink.cdc.connectors.utils.AssertUtils.assertDelete;
-import static org.apache.flink.cdc.connectors.utils.AssertUtils.assertInsert;
-import static org.apache.flink.cdc.connectors.utils.AssertUtils.assertRead;
-import static org.apache.flink.cdc.connectors.utils.AssertUtils.assertUpdate;
-import static org.testcontainers.containers.Db2Container.DB2_PORT;
 
 /** Test for {@link Db2Source} which also heavily tests {@link DebeziumSourceFunction}. */
 class Db2SourceTest extends Db2TestBase {
@@ -89,18 +93,18 @@ class Db2SourceTest extends Db2TestBase {
             List<SourceRecord> records = drain(sourceContext, 9);
             Assertions.assertThat(records).hasSize(9);
             for (int i = 0; i < records.size(); i++) {
-                assertRead(records.get(i), "ID", 101 + i);
+                AssertUtils.assertRead(records.get(i), "ID", 101 + i);
             }
 
             statement.execute(
                     "INSERT INTO DB2INST1.PRODUCTS VALUES (default,'robot','Toy robot',1.304)"); // 110
             records = drain(sourceContext, 1);
-            assertInsert(records.get(0), "ID", 110);
+            AssertUtils.assertInsert(records.get(0), "ID", 110);
 
             statement.execute(
                     "INSERT INTO DB2INST1.PRODUCTS VALUES (1001,'roy','old robot',1234.56)"); // 1001
             records = drain(sourceContext, 1);
-            assertInsert(records.get(0), "ID", 1001);
+            AssertUtils.assertInsert(records.get(0), "ID", 1001);
 
             // ---------------------------------------------------------------------------------------------------------------
             // Changing the primary key of a row should result in 2 events: INSERT, DELETE
@@ -109,15 +113,15 @@ class Db2SourceTest extends Db2TestBase {
             statement.execute(
                     "UPDATE DB2INST1.PRODUCTS SET ID=2001, DESCRIPTION='really old robot' WHERE ID=1001");
             records = drain(sourceContext, 2);
-            assertDelete(records.get(0), "ID", 1001);
-            assertInsert(records.get(1), "ID", 2001);
+            AssertUtils.assertDelete(records.get(0), "ID", 1001);
+            AssertUtils.assertInsert(records.get(1), "ID", 2001);
 
             // ---------------------------------------------------------------------------------------------------------------
             // Simple UPDATE (with no schema changes)
             // ---------------------------------------------------------------------------------------------------------------
             statement.execute("UPDATE DB2INST1.PRODUCTS SET WEIGHT=1345.67 WHERE ID=2001");
             records = drain(sourceContext, 1);
-            assertUpdate(records.get(0), "ID", 2001);
+            AssertUtils.assertUpdate(records.get(0), "ID", 2001);
 
             // ---------------------------------------------------------------------------------------------------------------
             // Change our schema with a fully-qualified name; we should still see this event
@@ -128,7 +132,7 @@ class Db2SourceTest extends Db2TestBase {
                     "ALTER TABLE DB2INST1.PRODUCTS ADD COLUMN VOLUME FLOAT ADD COLUMN ALIAS VARCHAR(30) NULL");
             statement.execute("UPDATE DB2INST1.PRODUCTS SET VOLUME=13.5 WHERE ID=2001");
             records = drain(sourceContext, 1);
-            assertUpdate(records.get(0), "ID", 2001);
+            AssertUtils.assertUpdate(records.get(0), "ID", 2001);
 
             // cleanup
             source.close();
@@ -141,6 +145,8 @@ class Db2SourceTest extends Db2TestBase {
         initializeDb2Table("inventory", "PRODUCTS");
         final TestingListState<byte[]> offsetState = new TestingListState<>();
         final TestingListState<String> historyState = new TestingListState<>();
+        final TestingListStateV2<byte[]> offsetStateV2 = new TestingListStateV2<>();
+        final TestingListStateV2<String> historyStateV2 = new TestingListStateV2<>();
         String prevLsn = "";
         {
             // ---------------------------------------------------------------------------
@@ -152,7 +158,16 @@ class Db2SourceTest extends Db2TestBase {
             final BlockingSourceContext<SourceRecord> sourceContext =
                     new BlockingSourceContext<>(8);
             // setup source with empty state
-            setupSource(source, null, offsetState, historyState, true, 0, 1);
+            setupSource(
+                    source,
+                    null,
+                    offsetState,
+                    historyState,
+                    offsetStateV2,
+                    historyStateV2,
+                    true,
+                    0,
+                    1);
 
             final CheckedThread runThread =
                     new CheckedThread() {
@@ -211,7 +226,16 @@ class Db2SourceTest extends Db2TestBase {
             final DebeziumSourceFunction<SourceRecord> source2 =
                     createDb2Source("DB2INST1.PRODUCTS");
             final TestSourceContext<SourceRecord> sourceContext2 = new TestSourceContext<>();
-            setupSource(source2, 1L, offsetState, historyState, true, 0, 1);
+            setupSource(
+                    source2,
+                    1L,
+                    offsetState,
+                    historyState,
+                    offsetStateV2,
+                    historyStateV2,
+                    true,
+                    0,
+                    1);
             final CheckedThread runThread2 =
                     new CheckedThread() {
                         @Override
@@ -232,7 +256,7 @@ class Db2SourceTest extends Db2TestBase {
                         "INSERT INTO DB2INST1.PRODUCTS VALUES (default,'robot','Toy robot',1.304)"); // 110
                 List<SourceRecord> records = drain(sourceContext2, 1);
                 Assertions.assertThat(records).hasSize(1);
-                assertInsert(records.get(0), "ID", 110);
+                AssertUtils.assertInsert(records.get(0), "ID", 110);
 
                 // ---------------------------------------------------------------------------
                 // Step-4: trigger checkpoint-2 during DML operations
@@ -267,7 +291,16 @@ class Db2SourceTest extends Db2TestBase {
             final DebeziumSourceFunction<SourceRecord> source3 =
                     createDb2Source("DB2INST1.PRODUCTS");
             final TestSourceContext<SourceRecord> sourceContext3 = new TestSourceContext<>();
-            setupSource(source3, 2L, offsetState, historyState, true, 0, 1);
+            setupSource(
+                    source3,
+                    2L,
+                    offsetState,
+                    historyState,
+                    offsetStateV2,
+                    historyStateV2,
+                    true,
+                    0,
+                    1);
 
             // restart the source
             final CheckedThread runThread3 =
@@ -281,8 +314,8 @@ class Db2SourceTest extends Db2TestBase {
 
             // consume the unconsumed redo logs
             List<SourceRecord> records = drain(sourceContext3, 2);
-            assertInsert(records.get(0), "ID", 1001);
-            assertUpdate(records.get(1), "ID", 1001);
+            AssertUtils.assertInsert(records.get(0), "ID", 1001);
+            AssertUtils.assertUpdate(records.get(1), "ID", 1001);
 
             // make sure there is no more events
             Assertions.assertThat(waitForAvailableRecords(Duration.ofSeconds(3), sourceContext3))
@@ -294,7 +327,7 @@ class Db2SourceTest extends Db2TestBase {
                 statement.execute("DELETE FROM DB2INST1.PRODUCTS WHERE ID=1001");
             }
             records = drain(sourceContext3, 1);
-            assertDelete(records.get(0), "ID", 1001);
+            AssertUtils.assertDelete(records.get(0), "ID", 1001);
 
             // ---------------------------------------------------------------------------
             // Step-6: trigger checkpoint-2 to make sure we can continue to further checkpoints
@@ -322,7 +355,7 @@ class Db2SourceTest extends Db2TestBase {
     private DebeziumSourceFunction<SourceRecord> createDb2Source(String tableName) {
         return Db2Source.<SourceRecord>builder()
                 .hostname(DB2_CONTAINER.getHost())
-                .port(DB2_CONTAINER.getMappedPort(DB2_PORT))
+                .port(DB2_CONTAINER.getMappedPort(Db2Container.DB2_PORT))
                 .database(DB2_CONTAINER.getDatabaseName())
                 .username(DB2_CONTAINER.getUsername())
                 .password(DB2_CONTAINER.getPassword())
@@ -385,7 +418,7 @@ class Db2SourceTest extends Db2TestBase {
 
     private static <T> void setupSource(DebeziumSourceFunction<T> source) throws Exception {
         setupSource(
-                source, null, null, null,
+                source, null, null, null, null, null,
                 true, // enable checkpointing; auto commit should be ignored
                 0, 1);
     }
@@ -393,8 +426,10 @@ class Db2SourceTest extends Db2TestBase {
     private static <T, S1, S2> void setupSource(
             DebeziumSourceFunction<T> source,
             @Nullable Long restoredCheckpointId,
-            ListState<S1> restoredOffsetState,
-            ListState<S2> restoredHistoryState,
+            org.apache.flink.api.common.state.ListState<S1> restoredOffsetState,
+            org.apache.flink.api.common.state.ListState<S2> restoredHistoryState,
+            ListState<S1> restoredOffsetStateV2,
+            ListState<S2> restoredHistoryStateV2,
             boolean isCheckpointingEnabled,
             int subtaskIndex,
             int totalNumSubtasks)
@@ -407,8 +442,12 @@ class Db2SourceTest extends Db2TestBase {
         source.initializeState(
                 new MockFunctionInitializationContext(
                         restoredCheckpointId,
-                        new MockOperatorStateStore(restoredOffsetState, restoredHistoryState)));
-        source.open(new Configuration());
+                        new MockOperatorStateStore(
+                                restoredOffsetState,
+                                restoredHistoryState,
+                                restoredOffsetStateV2,
+                                restoredHistoryStateV2)));
+        source.open(new DefaultOpenContext());
     }
 
     private static class ForwardDeserializeSchema
@@ -417,7 +456,7 @@ class Db2SourceTest extends Db2TestBase {
         private static final long serialVersionUID = 1L;
 
         @Override
-        public void deserialize(SourceRecord record, Collector<SourceRecord> out) throws Exception {
+        public void deserialize(SourceRecord record, Collector<SourceRecord> out) {
             out.collect(record);
         }
 
@@ -429,25 +468,31 @@ class Db2SourceTest extends Db2TestBase {
 
     private static class MockOperatorStateStore implements OperatorStateStore {
 
-        private final ListState<?> restoredOffsetListState;
-        private final ListState<?> restoredHistoryListState;
+        private final org.apache.flink.api.common.state.ListState<?> restoredOffsetListState;
+        private final org.apache.flink.api.common.state.ListState<?> restoredHistoryListState;
+        private final ListState<?> restoredOffsetListStateV2;
+        private final ListState<?> restoredHistoryListStateV2;
 
         private MockOperatorStateStore(
-                ListState<?> restoredOffsetListState, ListState<?> restoredHistoryListState) {
+                org.apache.flink.api.common.state.ListState<?> restoredOffsetListState,
+                org.apache.flink.api.common.state.ListState<?> restoredHistoryListState,
+                ListState<?> restoredOffsetListStateV2,
+                ListState<?> restoredHistoryListStateV2) {
             this.restoredOffsetListState = restoredOffsetListState;
             this.restoredHistoryListState = restoredHistoryListState;
+            this.restoredOffsetListStateV2 = restoredOffsetListStateV2;
+            this.restoredHistoryListStateV2 = restoredHistoryListStateV2;
         }
 
         @Override
         @SuppressWarnings("unchecked")
-        public <S> ListState<S> getUnionListState(ListStateDescriptor<S> stateDescriptor)
-                throws Exception {
-            if (stateDescriptor.getName().equals(DebeziumSourceFunction.OFFSETS_STATE_NAME)) {
-                return (ListState<S>) restoredOffsetListState;
+        public <S> ListState<S> getUnionListState(ListStateDescriptor<S> stateDescriptor) {
+            if (stateDescriptor.getStateId().equals(DebeziumSourceFunction.OFFSETS_STATE_NAME)) {
+                return (ListState<S>) restoredOffsetListStateV2;
             } else if (stateDescriptor
-                    .getName()
+                    .getStateId()
                     .equals(DebeziumSourceFunction.HISTORY_RECORDS_STATE_NAME)) {
-                return (ListState<S>) restoredHistoryListState;
+                return (ListState<S>) restoredHistoryListStateV2;
             } else {
                 throw new IllegalStateException("Unknown state.");
             }
@@ -455,13 +500,39 @@ class Db2SourceTest extends Db2TestBase {
 
         @Override
         public <K, V> BroadcastState<K, V> getBroadcastState(
-                MapStateDescriptor<K, V> stateDescriptor) throws Exception {
+                org.apache.flink.api.common.state.MapStateDescriptor<K, V> stateDescriptor) {
             throw new UnsupportedOperationException();
         }
 
         @Override
-        public <S> ListState<S> getListState(ListStateDescriptor<S> stateDescriptor)
-                throws Exception {
+        public <S> org.apache.flink.api.common.state.ListState<S> getListState(
+                org.apache.flink.api.common.state.ListStateDescriptor<S> stateDescriptor) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        @SuppressWarnings("unchecked")
+        public <S> org.apache.flink.api.common.state.ListState<S> getUnionListState(
+                org.apache.flink.api.common.state.ListStateDescriptor<S> stateDescriptor) {
+            if (stateDescriptor.getName().equals(DebeziumSourceFunction.OFFSETS_STATE_NAME)) {
+                return (org.apache.flink.api.common.state.ListState<S>) restoredOffsetListState;
+            } else if (stateDescriptor
+                    .getName()
+                    .equals(DebeziumSourceFunction.HISTORY_RECORDS_STATE_NAME)) {
+                return (org.apache.flink.api.common.state.ListState<S>) restoredHistoryListState;
+            } else {
+                throw new IllegalStateException("Unknown state.");
+            }
+        }
+
+        @Override
+        public <K, V> BroadcastState<K, V> getBroadcastState(
+                MapStateDescriptor<K, V> stateDescriptor) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public <S> ListState<S> getListState(ListStateDescriptor<S> stateDescriptor) {
             throw new UnsupportedOperationException();
         }
 
@@ -537,10 +608,16 @@ class Db2SourceTest extends Db2TestBase {
         }
     }
 
-    private static final class TestingListState<T> implements ListState<T> {
+    private static final class TestingListStateV2<T> implements ListState<T> {
 
         private final List<T> list = new ArrayList<>();
         private boolean clearCalled = false;
+
+        @Override
+        public StateFuture<Void> asyncClear() {
+            this.clear();
+            return StateFutureUtils.completedVoidFuture();
+        }
 
         @Override
         public void clear() {
@@ -549,12 +626,49 @@ class Db2SourceTest extends Db2TestBase {
         }
 
         @Override
-        public Iterable<T> get() throws Exception {
+        public StateFuture<StateIterator<T>> asyncGet() {
+            return StateFutureUtils.completedFuture(
+                    new StateIterator<>() {
+                        @Override
+                        public <U> StateFuture<Collection<U>> onNext(
+                                FunctionWithException<T, StateFuture<? extends U>, Exception> e) {
+                            Collection<StateFuture<? extends U>> resultFutures = new ArrayList<>();
+                            try {
+                                resultFutures.add(e.apply(internal.next()));
+                            } catch (Exception ex) {
+                                throw new FlinkRuntimeException(ex);
+                            }
+                            return StateFutureUtils.combineAll(resultFutures);
+                        }
+
+                        @Override
+                        public StateFuture<Void> onNext(
+                                ThrowingConsumer<T, Exception> throwingConsumer) {
+                            return StateFutureUtils.completedVoidFuture();
+                        }
+
+                        @Override
+                        public boolean isEmpty() {
+                            return internal.hasNext();
+                        }
+
+                        private final Iterator<T> internal = list.iterator();
+                    });
+        }
+
+        @Override
+        public StateFuture<Void> asyncAdd(T t) {
+            this.add(t);
+            return StateFutureUtils.completedVoidFuture();
+        }
+
+        @Override
+        public Iterable<T> get() {
             return list;
         }
 
         @Override
-        public void add(T value) throws Exception {
+        public void add(T value) {
             Preconditions.checkNotNull(value, "You cannot add null to a ListState.");
             list.add(value);
         }
@@ -568,14 +682,75 @@ class Db2SourceTest extends Db2TestBase {
         }
 
         @Override
-        public void update(List<T> values) throws Exception {
+        public StateFuture<Void> asyncUpdate(List<T> list) {
+            this.update(list);
+            return StateFutureUtils.completedVoidFuture();
+        }
+
+        @Override
+        public StateFuture<Void> asyncAddAll(List<T> list) {
+            this.addAll(list);
+            return StateFutureUtils.completedVoidFuture();
+        }
+
+        @Override
+        public void update(List<T> values) {
             clear();
 
             addAll(values);
         }
 
         @Override
-        public void addAll(List<T> values) throws Exception {
+        public void addAll(List<T> values) {
+            if (values != null) {
+                values.forEach(
+                        v -> Preconditions.checkNotNull(v, "You cannot add null to a ListState."));
+
+                list.addAll(values);
+            }
+        }
+    }
+
+    private static final class TestingListState<T>
+            implements org.apache.flink.api.common.state.ListState<T> {
+
+        private final List<T> list = new ArrayList<>();
+        private boolean clearCalled = false;
+
+        @Override
+        public void clear() {
+            list.clear();
+            clearCalled = true;
+        }
+
+        @Override
+        public Iterable<T> get() {
+            return list;
+        }
+
+        @Override
+        public void add(T value) {
+            Preconditions.checkNotNull(value, "You cannot add null to a ListState.");
+            list.add(value);
+        }
+
+        public List<T> getList() {
+            return list;
+        }
+
+        boolean isClearCalled() {
+            return clearCalled;
+        }
+
+        @Override
+        public void update(List<T> values) {
+            clear();
+
+            addAll(values);
+        }
+
+        @Override
+        public void addAll(List<T> values) {
             if (values != null) {
                 values.forEach(
                         v -> Preconditions.checkNotNull(v, "You cannot add null to a ListState."));

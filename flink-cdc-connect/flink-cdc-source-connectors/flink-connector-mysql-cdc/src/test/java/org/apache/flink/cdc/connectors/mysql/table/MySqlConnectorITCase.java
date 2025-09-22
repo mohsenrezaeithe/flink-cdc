@@ -17,7 +17,6 @@
 
 package org.apache.flink.cdc.connectors.mysql.table;
 
-import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.api.common.time.Deadline;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.cdc.connectors.mysql.debezium.DebeziumUtils;
@@ -27,6 +26,8 @@ import org.apache.flink.cdc.connectors.mysql.source.offset.BinlogOffset;
 import org.apache.flink.cdc.connectors.mysql.testutils.MySqlContainer;
 import org.apache.flink.cdc.connectors.mysql.testutils.MySqlVersion;
 import org.apache.flink.cdc.connectors.mysql.testutils.UniqueDatabase;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.RestartStrategyOptions;
 import org.apache.flink.core.execution.JobClient;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.api.EnvironmentSettings;
@@ -103,8 +104,16 @@ class MySqlConnectorITCase extends MySqlSourceTestBase {
     private final UniqueDatabase binlogDatabase =
             new UniqueDatabase(MYSQL8_CONTAINER, "binlog_metadata_test", TEST_USER, TEST_PASSWORD);
 
-    private final StreamExecutionEnvironment env =
-            StreamExecutionEnvironment.getExecutionEnvironment();
+    private final StreamExecutionEnvironment env;
+
+    {
+        final Configuration restartStrategyConf = new Configuration();
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY,
+                RestartStrategyOptions.RestartStrategyType.NO_RESTART_STRATEGY.getMainValue());
+        env = StreamExecutionEnvironment.getExecutionEnvironment(restartStrategyConf);
+    }
+
     private final StreamTableEnvironment tEnv =
             StreamTableEnvironment.create(
                     env, EnvironmentSettings.newInstance().inStreamingMode().build());
@@ -260,7 +269,7 @@ class MySqlConnectorITCase extends MySqlSourceTestBase {
 
         List<String> actual = TestValuesTableFactory.getResultsAsStrings("sink");
         assertEqualsInAnyOrder(Arrays.asList(expected), actual);
-        result.getJobClient().get().cancel().get();
+        result.getJobClient().orElseThrow().cancel().get();
     }
 
     @ParameterizedTest(name = "incrementalSnapshot = {0}")
@@ -402,7 +411,7 @@ class MySqlConnectorITCase extends MySqlSourceTestBase {
 
         List<String> actual = TestValuesTableFactory.getResultsAsStrings("sink");
         assertEqualsInAnyOrder(Arrays.asList(expected), actual);
-        result.getJobClient().get().cancel().get();
+        result.getJobClient().orElseThrow().cancel().get();
     }
 
     @Test
@@ -486,7 +495,7 @@ class MySqlConnectorITCase extends MySqlSourceTestBase {
                 };
         assertEqualsInOrder(
                 Arrays.asList(expectedBinlog), fetchRows(iterator, expectedBinlog.length));
-        result.getJobClient().get().cancel().get();
+        result.getJobClient().orElseThrow().cancel().get();
     }
 
     @ParameterizedTest(name = "incrementalSnapshot = {0}")
@@ -760,7 +769,7 @@ class MySqlConnectorITCase extends MySqlSourceTestBase {
                 };
 
         assertEqualsInAnyOrder(Arrays.asList(expected), fetchRows(iterator, expected.length));
-        result.getJobClient().get().cancel().get();
+        result.getJobClient().orElseThrow().cancel().get();
     }
 
     @ParameterizedTest(name = "incrementalSnapshot = {0}")
@@ -832,7 +841,7 @@ class MySqlConnectorITCase extends MySqlSourceTestBase {
                 };
 
         assertEqualsInAnyOrder(Arrays.asList(expected), fetchRows(iterator, expected.length));
-        result.getJobClient().get().cancel().get();
+        result.getJobClient().orElseThrow().cancel().get();
     }
 
     @Test
@@ -919,7 +928,7 @@ class MySqlConnectorITCase extends MySqlSourceTestBase {
 
         List<String> actual = TestValuesTableFactory.getRawResultsAsStrings("sink");
         assertThat(actual).containsExactlyInAnyOrderElementsOf(expected);
-        result.getJobClient().get().cancel().get();
+        result.getJobClient().orElseThrow().cancel().get();
     }
 
     @ParameterizedTest(name = "incrementalSnapshot = {0}")
@@ -1023,7 +1032,7 @@ class MySqlConnectorITCase extends MySqlSourceTestBase {
         //  https://issues.apache.org/jira/browse/FLINK-24511 is fixed.
         List<String> actual = TestValuesTableFactory.getRawResultsAsStrings("sink");
         assertThat(actual).containsExactlyInAnyOrderElementsOf(expected);
-        result.getJobClient().get().cancel().get();
+        result.getJobClient().orElseThrow().cancel().get();
     }
 
     @ParameterizedTest(name = "incrementalSnapshot = {0}")
@@ -1068,7 +1077,7 @@ class MySqlConnectorITCase extends MySqlSourceTestBase {
         // wait for the source startup, we don't have a better way to wait it, use sleep for now
         do {
             Thread.sleep(5000L);
-        } while (result.getJobClient().get().getJobStatus().get() != RUNNING);
+        } while (result.getJobClient().orElseThrow().getJobStatus().get() != RUNNING);
 
         CloseableIterator<Row> iterator = result.collect();
 
@@ -1140,7 +1149,7 @@ class MySqlConnectorITCase extends MySqlSourceTestBase {
         // wait for the source startup, we don't have a better way to wait it, use sleep for now
         do {
             Thread.sleep(5000L);
-        } while (result.getJobClient().get().getJobStatus().get() != RUNNING);
+        } while (result.getJobClient().orElseThrow().getJobStatus().get() != RUNNING);
 
         CloseableIterator<Row> iterator = result.collect();
 
@@ -1241,7 +1250,7 @@ class MySqlConnectorITCase extends MySqlSourceTestBase {
                     "+I[418257940021724075, Germany, Berlin, West Town address 3]"
                 };
         assertEqualsInAnyOrder(Arrays.asList(expected), fetchRows(iterator, expected.length));
-        result.getJobClient().get().cancel().get();
+        result.getJobClient().orElseThrow().cancel().get();
     }
 
     @Test
@@ -1304,7 +1313,7 @@ class MySqlConnectorITCase extends MySqlSourceTestBase {
                     "+I[110, newCustomer, Berlin, 12345678]"
                 };
         assertEqualsInAnyOrder(Arrays.asList(expected), fetchRows(iterator, expected.length));
-        result.getJobClient().get().cancel().get();
+        result.getJobClient().orElseThrow().cancel().get();
         customer3_0Database.dropDatabase();
     }
 
@@ -1312,7 +1321,6 @@ class MySqlConnectorITCase extends MySqlSourceTestBase {
     @ValueSource(booleans = {true, false})
     void testReadingWithRegexPattern(boolean incrementalSnapshot) throws Exception {
         setup(incrementalSnapshot);
-        env.setRestartStrategy(RestartStrategies.noRestart());
         customerDatabase.createAndInitialize();
         String sourceDDL =
                 String.format(
@@ -1380,13 +1388,12 @@ class MySqlConnectorITCase extends MySqlSourceTestBase {
                     "+I[2000, user_21, Shanghai, 123567891234]"
                 };
         assertEqualsInAnyOrder(Arrays.asList(expected), fetchRows(iterator, expected.length));
-        result.getJobClient().get().cancel().get();
+        result.getJobClient().orElseThrow().cancel().get();
     }
 
     @Test
     void testDdlWithDefaultStringValue() throws Exception {
         setup(true);
-        env.setRestartStrategy(RestartStrategies.noRestart());
         customerDatabase.createAndInitialize();
         String sourceDDL =
                 String.format(
@@ -1420,7 +1427,7 @@ class MySqlConnectorITCase extends MySqlSourceTestBase {
         tEnv.executeSql(sourceDDL);
         // async submit job
         TableResult result = tEnv.executeSql("SELECT * FROM default_value_test");
-        JobClient jobClient = result.getJobClient().get();
+        JobClient jobClient = result.getJobClient().orElseThrow();
         waitForJobStatus(
                 jobClient,
                 Collections.singletonList(RUNNING),
@@ -1525,7 +1532,6 @@ class MySqlConnectorITCase extends MySqlSourceTestBase {
     @Test
     void testAlterWithDefaultStringValue() throws Exception {
         setup(true);
-        env.setRestartStrategy(RestartStrategies.noRestart());
         customerDatabase.createAndInitialize();
         String sourceDDL =
                 String.format(
@@ -1559,7 +1565,7 @@ class MySqlConnectorITCase extends MySqlSourceTestBase {
         tEnv.executeSql(sourceDDL);
         // async submit job
         TableResult result = tEnv.executeSql("SELECT * FROM default_value_test");
-        JobClient jobClient = result.getJobClient().get();
+        JobClient jobClient = result.getJobClient().orElseThrow();
         waitForJobStatus(
                 jobClient,
                 Collections.singletonList(RUNNING),
@@ -1678,7 +1684,7 @@ class MySqlConnectorITCase extends MySqlSourceTestBase {
         List<String> actual = TestValuesTableFactory.getResultsAsStrings("sink");
         assertEqualsInAnyOrder(Arrays.asList(expected), actual);
 
-        result.getJobClient().get().cancel().get();
+        result.getJobClient().orElseThrow().cancel().get();
     }
 
     @Test
@@ -1776,7 +1782,7 @@ class MySqlConnectorITCase extends MySqlSourceTestBase {
         List<String> actual = TestValuesTableFactory.getResultsAsStrings("sink");
         assertEqualsInAnyOrder(Arrays.asList(expected), actual);
 
-        result.getJobClient().get().cancel().get();
+        result.getJobClient().orElseThrow().cancel().get();
     }
 
     @ParameterizedTest(name = "incrementalSnapshot = {0}")
@@ -1858,7 +1864,7 @@ class MySqlConnectorITCase extends MySqlSourceTestBase {
         List<String> actual = TestValuesTableFactory.getResultsAsStrings("sink");
         assertEqualsInAnyOrder(Arrays.asList(expected), actual);
 
-        result.getJobClient().get().cancel().get();
+        result.getJobClient().orElseThrow().cancel().get();
     }
 
     @ParameterizedTest(name = "incrementalSnapshot = {0}")
@@ -1935,7 +1941,7 @@ class MySqlConnectorITCase extends MySqlSourceTestBase {
         List<String> actual = TestValuesTableFactory.getResultsAsStrings("sink");
         assertEqualsInAnyOrder(Arrays.asList(expected), actual);
 
-        result.getJobClient().get().cancel().get();
+        result.getJobClient().orElseThrow().cancel().get();
     }
 
     @ParameterizedTest(name = "incrementalSnapshot = {0}")
@@ -1993,7 +1999,7 @@ class MySqlConnectorITCase extends MySqlSourceTestBase {
                     "+I[123459.1234, KIND_004, user_4, null]"
                 };
         assertEqualsInAnyOrder(Arrays.asList(expected), fetchRows(iterator, expected.length));
-        result.getJobClient().get().cancel().get();
+        result.getJobClient().orElseThrow().cancel().get();
     }
 
     @Test
@@ -2035,7 +2041,7 @@ class MySqlConnectorITCase extends MySqlSourceTestBase {
         // wait for the source startup, we don't have a better way to wait it, use sleep for now
         do {
             Thread.sleep(5000L);
-        } while (result.getJobClient().get().getJobStatus().get() != RUNNING);
+        } while (result.getJobClient().orElseThrow().getJobStatus().get() != RUNNING);
 
         CloseableIterator<Row> iterator = result.collect();
 
@@ -2065,7 +2071,6 @@ class MySqlConnectorITCase extends MySqlSourceTestBase {
         setup(incrementalSnapshot);
         Assertions.assertThatThrownBy(
                         () -> {
-                            env.setRestartStrategy(RestartStrategies.noRestart());
                             customerDatabase.createAndInitialize();
                             int base = 5400;
                             for (int i = 0; i < 2; i++) {
@@ -2168,7 +2173,7 @@ class MySqlConnectorITCase extends MySqlSourceTestBase {
         // wait for the source startup, we don't have a better way to wait it, use sleep for now
         do {
             Thread.sleep(5000L);
-        } while (result.getJobClient().get().getJobStatus().get() != RUNNING);
+        } while (result.getJobClient().orElseThrow().getJobStatus().get() != RUNNING);
 
         CloseableIterator<Row> iterator = result.collect();
 
@@ -2316,7 +2321,7 @@ class MySqlConnectorITCase extends MySqlSourceTestBase {
         // wait for the source startup, we don't have a better way to wait it, use sleep for now
         do {
             Thread.sleep(5000L);
-        } while (result.getJobClient().get().getJobStatus().get() != RUNNING);
+        } while (result.getJobClient().orElseThrow().getJobStatus().get() != RUNNING);
 
         CloseableIterator<Row> iterator = result.collect();
 
@@ -2451,6 +2456,6 @@ class MySqlConnectorITCase extends MySqlSourceTestBase {
 
         List<String> actual = TestValuesTableFactory.getRawResultsAsStrings("sink");
         Assertions.assertThat(actual).containsExactlyInAnyOrderElementsOf(expected);
-        result.getJobClient().get().cancel().get();
+        result.getJobClient().orElseThrow().cancel().get();
     }
 }

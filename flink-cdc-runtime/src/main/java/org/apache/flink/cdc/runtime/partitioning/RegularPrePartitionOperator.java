@@ -36,7 +36,6 @@ import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
-
 import org.apache.flink.shaded.guava33.com.google.common.cache.CacheBuilder;
 import org.apache.flink.shaded.guava33.com.google.common.cache.CacheLoader;
 import org.apache.flink.shaded.guava33.com.google.common.cache.LoadingCache;

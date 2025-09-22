@@ -148,7 +148,8 @@ public class OracleDialect implements JdbcDataSourceDialect {
     }
 
     @Override
-    public FetchTask<SourceSplitBase> createFetchTask(SourceSplitBase sourceSplitBase) {
+    public FetchTask<SourceSplitBase, JdbcSourceConfig> createFetchTask(
+            SourceSplitBase sourceSplitBase) {
         if (sourceSplitBase.isSnapshotSplit()) {
             return new OracleScanFetchTask(sourceSplitBase.asSnapshotSplit());
         } else {

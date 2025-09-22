@@ -25,7 +25,6 @@ import org.apache.flink.cdc.common.factories.DataSourceFactory;
 import org.apache.flink.cdc.common.factories.FactoryHelper;
 import org.apache.flink.cdc.common.source.DataSource;
 import org.apache.flink.cdc.common.source.EventSourceProvider;
-import org.apache.flink.cdc.common.source.FlinkSourceFunctionProvider;
 import org.apache.flink.cdc.common.source.FlinkSourceProvider;
 import org.apache.flink.cdc.composer.definition.SourceDef;
 import org.apache.flink.cdc.composer.flink.FlinkEnvironmentUtils;
@@ -65,16 +64,6 @@ public class DataSourceTranslator {
                     WatermarkStrategy.noWatermarks(),
                     sourceDef.getName().orElse(generateDefaultSourceName(sourceDef)),
                     new EventTypeInfo());
-        }
-
-        // SourceFunction
-        if (eventSourceProvider instanceof FlinkSourceFunctionProvider) {
-            FlinkSourceFunctionProvider sourceFunctionProvider =
-                    (FlinkSourceFunctionProvider) eventSourceProvider;
-            DataStreamSource<Event> stream =
-                    env.addSource(sourceFunctionProvider.getSourceFunction(), new EventTypeInfo());
-            sourceDef.getName().ifPresent(stream::name);
-            return stream;
         }
 
         // Unknown provider type

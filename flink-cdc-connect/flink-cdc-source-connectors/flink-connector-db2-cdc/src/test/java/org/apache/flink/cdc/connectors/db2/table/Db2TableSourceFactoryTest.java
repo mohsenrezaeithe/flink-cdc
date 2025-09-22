@@ -20,9 +20,11 @@ package org.apache.flink.cdc.connectors.db2.table;
 import org.apache.flink.cdc.connectors.base.options.JdbcSourceOptions;
 import org.apache.flink.cdc.connectors.base.options.SourceOptions;
 import org.apache.flink.cdc.connectors.base.options.StartupOptions;
+import org.apache.flink.cdc.debezium.utils.ResolvedSchemaUtils;
 import org.apache.flink.configuration.ConfigOption;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.table.api.DataTypes;
+import org.apache.flink.table.api.Schema;
 import org.apache.flink.table.catalog.CatalogTable;
 import org.apache.flink.table.catalog.Column;
 import org.apache.flink.table.catalog.ObjectIdentifier;
@@ -43,9 +45,6 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
-
-import static org.apache.flink.cdc.debezium.utils.ResolvedSchemaUtils.getPhysicalSchema;
-import static org.apache.flink.table.api.TableSchema.fromResolvedSchema;
 
 /** Test for {@link Db2TableSource} created by {@link Db2TableSourceFactory}. */
 class Db2TableSourceFactoryTest {
@@ -92,7 +91,7 @@ class Db2TableSourceFactoryTest {
         DynamicTableSource actualSource = createTableSource(properties, SCHEMA);
         Db2TableSource expectedSource =
                 new Db2TableSource(
-                        getPhysicalSchema(SCHEMA),
+                        ResolvedSchemaUtils.getPhysicalSchema(SCHEMA),
                         50000,
                         MY_LOCALHOST,
                         MY_DATABASE,
@@ -102,7 +101,6 @@ class Db2TableSourceFactoryTest {
                         ZoneId.of("UTC"),
                         PROPERTIES,
                         StartupOptions.initial(),
-                        SourceOptions.SCAN_INCREMENTAL_SNAPSHOT_ENABLED.defaultValue(),
                         SourceOptions.SCAN_INCREMENTAL_SNAPSHOT_CHUNK_SIZE.defaultValue(),
                         SourceOptions.CHUNK_META_GROUP_SIZE.defaultValue(),
                         SourceOptions.SCAN_SNAPSHOT_FETCH_SIZE.defaultValue(),
@@ -134,7 +132,7 @@ class Db2TableSourceFactoryTest {
         dbzProperties.put("snapshot.mode", "schema_only");
         Db2TableSource expectedSource =
                 new Db2TableSource(
-                        getPhysicalSchema(SCHEMA),
+                        ResolvedSchemaUtils.getPhysicalSchema(SCHEMA),
                         50000,
                         MY_LOCALHOST,
                         MY_DATABASE,
@@ -144,7 +142,6 @@ class Db2TableSourceFactoryTest {
                         ZoneId.of("Asia/Shanghai"),
                         dbzProperties,
                         StartupOptions.latest(),
-                        SourceOptions.SCAN_INCREMENTAL_SNAPSHOT_ENABLED.defaultValue(),
                         SourceOptions.SCAN_INCREMENTAL_SNAPSHOT_CHUNK_SIZE.defaultValue(),
                         SourceOptions.CHUNK_META_GROUP_SIZE.defaultValue(),
                         SourceOptions.SCAN_SNAPSHOT_FETCH_SIZE.defaultValue(),
@@ -218,7 +215,6 @@ class Db2TableSourceFactoryTest {
                         ZoneId.of("UTC"),
                         new Properties(),
                         StartupOptions.initial(),
-                        SourceOptions.SCAN_INCREMENTAL_SNAPSHOT_ENABLED.defaultValue(),
                         SourceOptions.SCAN_INCREMENTAL_SNAPSHOT_CHUNK_SIZE.defaultValue(),
                         SourceOptions.CHUNK_META_GROUP_SIZE.defaultValue(),
                         SourceOptions.SCAN_SNAPSHOT_FETCH_SIZE.defaultValue(),
@@ -254,16 +250,18 @@ class Db2TableSourceFactoryTest {
 
     private static DynamicTableSource createTableSource(
             Map<String, String> options, ResolvedSchema schema) {
-        return FactoryUtil.createTableSource(
+        return FactoryUtil.createDynamicTableSource(
                 null,
                 ObjectIdentifier.of("default", "default", "t1"),
                 new ResolvedCatalogTable(
-                        CatalogTable.of(
-                                fromResolvedSchema(schema).toSchema(),
-                                "mock source",
-                                new ArrayList<>(),
-                                options),
+                        CatalogTable.newBuilder()
+                                .schema(Schema.newBuilder().fromResolvedSchema(schema).build())
+                                .comment("mock source")
+                                .partitionKeys(new ArrayList<>())
+                                .options(options)
+                                .build(),
                         schema),
+                new HashMap<>(),
                 new Configuration(),
                 Db2TableSourceFactoryTest.class.getClassLoader(),
                 false);

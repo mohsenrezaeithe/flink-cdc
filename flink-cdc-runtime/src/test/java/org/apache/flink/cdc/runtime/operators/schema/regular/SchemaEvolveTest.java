@@ -48,7 +48,6 @@ import org.apache.flink.shaded.guava33.com.google.common.collect.Sets;
 
 import org.apache.commons.collections.ListUtils;
 import org.assertj.core.api.Assertions;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
@@ -60,7 +59,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
 /** Unit tests for the {@link SchemaOperator} to handle evolved schema. */
-@Disabled
 class SchemaEvolveTest {
 
     private static final DataType TINYINT = DataTypes.TINYINT();

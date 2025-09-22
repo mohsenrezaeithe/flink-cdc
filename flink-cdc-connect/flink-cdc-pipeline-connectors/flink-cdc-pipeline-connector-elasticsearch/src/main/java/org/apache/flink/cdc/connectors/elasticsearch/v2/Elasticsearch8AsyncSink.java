@@ -20,6 +20,9 @@
 package org.apache.flink.cdc.connectors.elasticsearch.v2;
 
 import org.apache.flink.annotation.VisibleForTesting;
+import org.apache.flink.api.connector.sink2.SinkWriter;
+import org.apache.flink.api.connector.sink2.StatefulSinkWriter;
+import org.apache.flink.api.connector.sink2.WriterInitContext;
 import org.apache.flink.connector.base.sink.AsyncSinkBase;
 import org.apache.flink.connector.base.sink.writer.BufferedRequestState;
 import org.apache.flink.connector.base.sink.writer.ElementConverter;
@@ -84,8 +87,7 @@ public class Elasticsearch8AsyncSink<InputT> extends AsyncSinkBase<InputT, Opera
      * @return a new instance of {@link Elasticsearch8AsyncWriter}.
      */
     @Override
-    public StatefulSinkWriter<InputT, BufferedRequestState<Operation>> createWriter(
-            InitContext context) {
+    public SinkWriter<InputT> createWriter(WriterInitContext context) {
         return new Elasticsearch8AsyncWriter<>(
                 getElementConverter(),
                 context,
@@ -108,7 +110,7 @@ public class Elasticsearch8AsyncSink<InputT> extends AsyncSinkBase<InputT, Opera
      */
     @Override
     public StatefulSinkWriter<InputT, BufferedRequestState<Operation>> restoreWriter(
-            InitContext context, Collection<BufferedRequestState<Operation>> recoveredState) {
+            WriterInitContext context, Collection<BufferedRequestState<Operation>> recoveredState) {
         return new Elasticsearch8AsyncWriter<>(
                 getElementConverter(),
                 context,

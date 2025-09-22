@@ -35,7 +35,7 @@ limitations under the License.
 
     <properties>
         <elasticsearch.version>8.12.1</elasticsearch.version>
-        <flink.connector.elasticsearch.version>3.0.1-1.17</flink.connector.elasticsearch.version>
+        <flink.connector.elasticsearch.version>4.0.0-${flink-major-2.0}</flink.connector.elasticsearch.version>
         <httpclient.version>4.5.13</httpclient.version>
         <jakarta.json.version>2.0.2</jakarta.json.version>
     </properties>
@@ -77,13 +77,11 @@ limitations under the License.
         <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>junit-jupiter</artifactId>
-            <version>${testcontainers.version}</version>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>elasticsearch</artifactId>
-            <version>${testcontainers.version}</version>
             <scope>test</scope>
         </dependency>
 

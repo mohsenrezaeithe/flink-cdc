@@ -20,22 +20,20 @@ package org.apache.flink.cdc.connectors.sqlserver.table;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.cdc.connectors.base.options.StartupOptions;
 import org.apache.flink.cdc.connectors.base.source.jdbc.JdbcIncrementalSource;
-import org.apache.flink.cdc.connectors.sqlserver.SqlServerSource;
 import org.apache.flink.cdc.connectors.sqlserver.source.SqlServerSourceBuilder;
 import org.apache.flink.cdc.debezium.DebeziumDeserializationSchema;
-import org.apache.flink.cdc.debezium.DebeziumSourceFunction;
 import org.apache.flink.cdc.debezium.table.MetadataConverter;
 import org.apache.flink.cdc.debezium.table.RowDataDebeziumDeserializeSchema;
 import org.apache.flink.table.catalog.ResolvedSchema;
 import org.apache.flink.table.connector.ChangelogMode;
 import org.apache.flink.table.connector.source.DynamicTableSource;
 import org.apache.flink.table.connector.source.ScanTableSource;
-import org.apache.flink.table.connector.source.SourceFunctionProvider;
 import org.apache.flink.table.connector.source.SourceProvider;
 import org.apache.flink.table.connector.source.abilities.SupportsReadingMetadata;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.types.DataType;
 import org.apache.flink.table.types.logical.RowType;
+import org.apache.flink.util.Preconditions;
 
 import javax.annotation.Nullable;
 
@@ -48,8 +46,6 @@ import java.util.Objects;
 import java.util.Properties;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-
-import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
  * A {@link DynamicTableSource} that describes how to create a SqlServer source from a logical
@@ -67,7 +63,6 @@ public class SqlServerTableSource implements ScanTableSource, SupportsReadingMet
     private final String password;
     private final Properties dbzProperties;
     private final StartupOptions startupOptions;
-    private final boolean enableParallelRead;
     private final int splitSize;
     private final int splitMetaGroupSize;
     private final int fetchSize;
@@ -102,7 +97,6 @@ public class SqlServerTableSource implements ScanTableSource, SupportsReadingMet
             String password,
             Properties dbzProperties,
             StartupOptions startupOptions,
-            boolean enableParallelRead,
             int splitSize,
             int splitMetaGroupSize,
             int fetchSize,
@@ -117,17 +111,16 @@ public class SqlServerTableSource implements ScanTableSource, SupportsReadingMet
             boolean assignUnboundedChunkFirst) {
         this.physicalSchema = physicalSchema;
         this.port = port;
-        this.hostname = checkNotNull(hostname);
-        this.database = checkNotNull(database);
-        this.tableName = checkNotNull(tableName);
+        this.hostname = Preconditions.checkNotNull(hostname);
+        this.database = Preconditions.checkNotNull(database);
+        this.tableName = Preconditions.checkNotNull(tableName);
         this.serverTimeZone = serverTimeZone;
-        this.username = checkNotNull(username);
-        this.password = checkNotNull(password);
+        this.username = Preconditions.checkNotNull(username);
+        this.password = Preconditions.checkNotNull(password);
         this.dbzProperties = dbzProperties;
         this.startupOptions = startupOptions;
         this.producedDataType = physicalSchema.toPhysicalRowDataType();
         this.metadataKeys = Collections.emptyList();
-        this.enableParallelRead = enableParallelRead;
         this.splitSize = splitSize;
         this.splitMetaGroupSize = splitMetaGroupSize;
         this.fetchSize = fetchSize;
@@ -164,48 +157,32 @@ public class SqlServerTableSource implements ScanTableSource, SupportsReadingMet
                                 SqlServerDeserializationConverterFactory.instance())
                         .build();
 
-        if (enableParallelRead) {
-            JdbcIncrementalSource<RowData> sqlServerChangeEventSource =
-                    SqlServerSourceBuilder.SqlServerIncrementalSource.<RowData>builder()
-                            .hostname(hostname)
-                            .port(port)
-                            .databaseList(database)
-                            .tableList(tableName)
-                            .serverTimeZone(serverTimeZone.toString())
-                            .username(username)
-                            .password(password)
-                            .startupOptions(startupOptions)
-                            .deserializer(deserializer)
-                            .debeziumProperties(dbzProperties)
-                            .splitSize(splitSize)
-                            .splitMetaGroupSize(splitMetaGroupSize)
-                            .fetchSize(fetchSize)
-                            .connectTimeout(connectTimeout)
-                            .connectMaxRetries(connectMaxRetries)
-                            .connectionPoolSize(connectionPoolSize)
-                            .distributionFactorUpper(distributionFactorUpper)
-                            .distributionFactorLower(distributionFactorLower)
-                            .chunkKeyColumn(chunkKeyColumn)
-                            .closeIdleReaders(closeIdleReaders)
-                            .skipSnapshotBackfill(skipSnapshotBackfill)
-                            .assignUnboundedChunkFirst(assignUnboundedChunkFirst)
-                            .build();
-            return SourceProvider.of(sqlServerChangeEventSource);
-        } else {
-            DebeziumSourceFunction<RowData> sourceFunction =
-                    SqlServerSource.<RowData>builder()
-                            .hostname(hostname)
-                            .port(port)
-                            .database(database)
-                            .tableList(tableName)
-                            .username(username)
-                            .password(password)
-                            .debeziumProperties(dbzProperties)
-                            .startupOptions(startupOptions)
-                            .deserializer(deserializer)
-                            .build();
-            return SourceFunctionProvider.of(sourceFunction, false);
-        }
+        JdbcIncrementalSource<RowData> sqlServerChangeEventSource =
+                SqlServerSourceBuilder.SqlServerIncrementalSource.<RowData>builder()
+                        .hostname(hostname)
+                        .port(port)
+                        .databaseList(database)
+                        .tableList(tableName)
+                        .serverTimeZone(serverTimeZone.toString())
+                        .username(username)
+                        .password(password)
+                        .startupOptions(startupOptions)
+                        .deserializer(deserializer)
+                        .debeziumProperties(dbzProperties)
+                        .splitSize(splitSize)
+                        .splitMetaGroupSize(splitMetaGroupSize)
+                        .fetchSize(fetchSize)
+                        .connectTimeout(connectTimeout)
+                        .connectMaxRetries(connectMaxRetries)
+                        .connectionPoolSize(connectionPoolSize)
+                        .distributionFactorUpper(distributionFactorUpper)
+                        .distributionFactorLower(distributionFactorLower)
+                        .chunkKeyColumn(chunkKeyColumn)
+                        .closeIdleReaders(closeIdleReaders)
+                        .skipSnapshotBackfill(skipSnapshotBackfill)
+                        .assignUnboundedChunkFirst(assignUnboundedChunkFirst)
+                        .build();
+        return SourceProvider.of(sqlServerChangeEventSource);
     }
 
     private MetadataConverter[] getMetadataConverters() {
@@ -238,7 +215,6 @@ public class SqlServerTableSource implements ScanTableSource, SupportsReadingMet
                         password,
                         dbzProperties,
                         startupOptions,
-                        enableParallelRead,
                         splitSize,
                         splitMetaGroupSize,
                         fetchSize,
@@ -277,7 +253,6 @@ public class SqlServerTableSource implements ScanTableSource, SupportsReadingMet
                 && Objects.equals(startupOptions, that.startupOptions)
                 && Objects.equals(producedDataType, that.producedDataType)
                 && Objects.equals(metadataKeys, that.metadataKeys)
-                && Objects.equals(enableParallelRead, that.enableParallelRead)
                 && Objects.equals(splitSize, that.splitSize)
                 && Objects.equals(splitMetaGroupSize, that.splitMetaGroupSize)
                 && Objects.equals(fetchSize, that.fetchSize)
@@ -307,7 +282,6 @@ public class SqlServerTableSource implements ScanTableSource, SupportsReadingMet
                 startupOptions,
                 producedDataType,
                 metadataKeys,
-                enableParallelRead,
                 splitSize,
                 splitMetaGroupSize,
                 fetchSize,

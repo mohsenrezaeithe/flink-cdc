@@ -144,7 +144,7 @@ limitations under the License.
         </dependency>
         <dependency>
             <groupId>org.apache.paimon</groupId>
-            <artifactId>paimon-flink-${flink.major.version}</artifactId>
+            <artifactId>paimon-flink-${flink-major-2.0}</artifactId>
             <version>${paimon.version}</version>
             <scope>test</scope>
         </dependency>
@@ -188,7 +188,7 @@ limitations under the License.
         </dependency>
         <dependency>
             <groupId>org.apache.iceberg</groupId>
-            <artifactId>iceberg-flink-runtime-${flink-major-1.20}</artifactId>
+            <artifactId>iceberg-flink-runtime-${flink-major-2.0}</artifactId>
             <version>${iceberg.version}</version>
             <scope>test</scope>
         </dependency>
@@ -209,19 +209,16 @@ limitations under the License.
         <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>testcontainers</artifactId>
-            <version>${testcontainers.version}</version>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>junit-jupiter</artifactId>
-            <version>${testcontainers.version}</version>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>mysql</artifactId>
-            <version>${testcontainers.version}</version>
             <scope>test</scope>
         </dependency>
 
@@ -229,7 +226,6 @@ limitations under the License.
         <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>postgresql</artifactId>
-            <version>${testcontainers.version}</version>
             <scope>test</scope>
         </dependency>
 
@@ -244,7 +240,6 @@ limitations under the License.
         <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>kafka</artifactId>
-            <version>${testcontainers.version}</version>
             <scope>test</scope>
         </dependency>
 
@@ -611,7 +606,7 @@ limitations under the License.
                         </artifactItem>
                         <artifactItem>
                             <groupId>com.alibaba.fluss</groupId>
-                            <artifactId>fluss-flink-${flink.major.version}</artifactId>
+                            <artifactId>fluss-flink-${flink-major-1.20}</artifactId>
                             <version>${fluss.version}</version>
                             <destFileName>fluss-sql-connector.jar</destFileName>
                             <type>jar</type>
@@ -647,9 +642,9 @@ limitations under the License.
                         </artifactItem>
                         <artifactItem>
                             <groupId>org.apache.paimon</groupId>
-                            <artifactId>paimon-flink-${flink-major-1.20}</artifactId>
+                            <artifactId>paimon-flink-${flink-major-2.0}</artifactId>
                             <version>${paimon.version}</version>
-                            <destFileName>paimon-sql-connector-${flink-1.20}.jar</destFileName>
+                            <destFileName>paimon-sql-connector-${flink-2.0}.jar</destFileName>
                             <type>jar</type>
                             <outputDirectory>${project.build.directory}/dependencies
                             </outputDirectory>

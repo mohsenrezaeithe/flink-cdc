@@ -1,3 +1,4 @@
+release/
 .cache
 scalastyle-output.xml
 .classpath

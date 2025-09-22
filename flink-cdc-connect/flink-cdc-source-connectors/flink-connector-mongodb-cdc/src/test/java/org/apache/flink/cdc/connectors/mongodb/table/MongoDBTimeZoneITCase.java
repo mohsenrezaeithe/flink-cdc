@@ -18,6 +18,7 @@
 package org.apache.flink.cdc.connectors.mongodb.table;
 
 import org.apache.flink.cdc.connectors.mongodb.source.MongoDBSourceTestBase;
+import org.apache.flink.cdc.connectors.mongodb.utils.MongoDBContainer;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.api.EnvironmentSettings;
 import org.apache.flink.table.api.TableResult;
@@ -27,9 +28,15 @@ import org.apache.flink.types.Row;
 import org.apache.flink.util.CloseableIterator;
 
 import org.assertj.core.api.Assertions;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.testcontainers.containers.output.Slf4jLogConsumer;
+import org.testcontainers.lifecycle.Startables;
 
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -42,6 +49,29 @@ import static org.apache.flink.cdc.connectors.mongodb.utils.MongoDBContainer.FLI
 
 /** Integration tests to check mongodb-cdc works well under different local timezone. */
 class MongoDBTimeZoneITCase extends MongoDBSourceTestBase {
+
+    private static final Logger LOG = LoggerFactory.getLogger(MongoDBTimeZoneITCase.class);
+
+    private static final MongoDBContainer MONGO_CONTAINER =
+            new MongoDBContainer("mongo:" + getMongoVersion())
+                    .withSharding()
+                    .withLogConsumer(new Slf4jLogConsumer(LOG));
+
+    @BeforeAll
+    static void startContainers() {
+        LOG.info("Starting containers...");
+        Startables.deepStart(Stream.of(MONGO_CONTAINER)).join();
+        LOG.info("Containers are started.");
+    }
+
+    @AfterAll
+    static void stopContainers() {
+        LOG.info("Stopping containers...");
+        if (MONGO_CONTAINER != null) {
+            MONGO_CONTAINER.stop();
+        }
+        LOG.info("Containers are stopped.");
+    }
 
     private final StreamExecutionEnvironment env =
             StreamExecutionEnvironment.getExecutionEnvironment();
@@ -116,7 +146,7 @@ class MongoDBTimeZoneITCase extends MongoDBSourceTestBase {
                                 + "FROM full_types");
 
         CloseableIterator<Row> iterator = result.collect();
-        String[] expectedSnapshot = null;
+        String[] expectedSnapshot;
 
         switch (localTimeZone) {
             case "Asia/Shanghai":
@@ -142,7 +172,7 @@ class MongoDBTimeZoneITCase extends MongoDBSourceTestBase {
         List<String> actualSnapshot = fetchRows(iterator, expectedSnapshot.length);
         Assertions.assertThat(actualSnapshot).containsExactlyInAnyOrder(expectedSnapshot);
 
-        result.getJobClient().get().cancel().get();
+        result.getJobClient().orElseThrow().cancel().get();
     }
 
     @ParameterizedTest
@@ -208,7 +238,7 @@ class MongoDBTimeZoneITCase extends MongoDBSourceTestBase {
         List<String> actualSnapshot = fetchRows(iterator, expectedSnapshot.length);
         Assertions.assertThat(actualSnapshot).containsExactlyInAnyOrder(expectedSnapshot);
 
-        result.getJobClient().get().cancel().get();
+        result.getJobClient().orElseThrow().cancel().get();
     }
 
     private static List<String> fetchRows(Iterator<Row> iter, int size) {

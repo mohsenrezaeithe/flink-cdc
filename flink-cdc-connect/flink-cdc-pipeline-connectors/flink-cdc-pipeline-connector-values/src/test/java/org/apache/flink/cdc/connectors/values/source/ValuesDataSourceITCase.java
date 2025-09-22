@@ -18,7 +18,6 @@
 package org.apache.flink.cdc.connectors.values.source;
 
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
-import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.cdc.common.data.binary.BinaryStringData;
 import org.apache.flink.cdc.common.event.CreateTableEvent;
 import org.apache.flink.cdc.common.event.DataChangeEvent;
@@ -33,6 +32,8 @@ import org.apache.flink.cdc.connectors.values.ValuesDatabase;
 import org.apache.flink.cdc.connectors.values.factory.ValuesDataFactory;
 import org.apache.flink.cdc.runtime.typeutils.BinaryRecordDataGenerator;
 import org.apache.flink.cdc.runtime.typeutils.EventTypeInfo;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.RestartStrategyOptions;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.util.CloseableIterator;
 
@@ -66,26 +67,30 @@ class ValuesDataSourceITCase {
      * apply the events to ValuesDatabase.
      */
     private void executeDataStreamJob(ValuesDataSourceHelper.EventSetId type) throws Exception {
-        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        final Configuration conf = new Configuration();
+        conf.set(
+                RestartStrategyOptions.RESTART_STRATEGY,
+                RestartStrategyOptions.RestartStrategyType.NO_RESTART_STRATEGY.getMainValue());
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment(conf);
         env.enableCheckpointing(3000);
-        env.setRestartStrategy(RestartStrategies.noRestart());
         FlinkSourceProvider sourceProvider =
                 (FlinkSourceProvider) new ValuesDataSource(type).getEventSourceProvider();
-        CloseableIterator<Event> events =
+        try (CloseableIterator<Event> events =
                 env.fromSource(
                                 sourceProvider.getSource(),
                                 WatermarkStrategy.noWatermarks(),
                                 ValuesDataFactory.IDENTIFIER,
                                 new EventTypeInfo())
-                        .executeAndCollect();
-        events.forEachRemaining(
-                (event) -> {
-                    if (event instanceof DataChangeEvent) {
-                        ValuesDatabase.applyDataChangeEvent((DataChangeEvent) event);
-                    } else if (event instanceof SchemaChangeEvent) {
-                        ValuesDatabase.applySchemaChangeEvent((SchemaChangeEvent) event);
-                    }
-                });
+                        .executeAndCollect()) {
+            events.forEachRemaining(
+                    (event) -> {
+                        if (event instanceof DataChangeEvent) {
+                            ValuesDatabase.applyDataChangeEvent((DataChangeEvent) event);
+                        } else if (event instanceof SchemaChangeEvent) {
+                            ValuesDatabase.applySchemaChangeEvent((SchemaChangeEvent) event);
+                        }
+                    });
+        }
     }
 
     @Test

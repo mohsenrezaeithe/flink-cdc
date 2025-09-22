@@ -22,6 +22,7 @@ import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.connector.source.ReaderOutput;
 import org.apache.flink.api.connector.source.SourceOutput;
 import org.apache.flink.api.connector.source.SourceReaderContext;
+import org.apache.flink.cdc.connectors.base.config.JdbcSourceConfig;
 import org.apache.flink.cdc.connectors.base.source.meta.offset.Offset;
 import org.apache.flink.cdc.connectors.base.source.meta.offset.OffsetFactory;
 import org.apache.flink.cdc.connectors.base.source.meta.split.SourceRecords;
@@ -43,8 +44,6 @@ import org.apache.flink.cdc.connectors.sqlserver.source.offset.LsnFactory;
 import org.apache.flink.cdc.connectors.sqlserver.testutils.RecordsFormatter;
 import org.apache.flink.cdc.debezium.DebeziumDeserializationSchema;
 import org.apache.flink.connector.base.source.reader.RecordEmitter;
-import org.apache.flink.connector.base.source.reader.RecordsWithSplitIds;
-import org.apache.flink.connector.base.source.reader.synchronization.FutureCompletingBlockingQueue;
 import org.apache.flink.connector.testutils.source.reader.TestingReaderContext;
 import org.apache.flink.core.io.InputStatus;
 import org.apache.flink.table.api.DataTypes;
@@ -71,9 +70,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
 
-import static org.apache.flink.cdc.connectors.base.source.meta.split.StreamSplit.STREAM_SPLIT_ID;
-import static org.apache.flink.core.io.InputStatus.MORE_AVAILABLE;
-
 /** Tests for Sqlserver incremental source reader. */
 class SqlserverSourceReaderTest extends SqlServerSourceTestBase {
 
@@ -96,8 +92,8 @@ class SqlserverSourceReaderTest extends SqlServerSourceTestBase {
                         DataTypes.FIELD("address", DataTypes.STRING()),
                         DataTypes.FIELD("phone_number", DataTypes.STRING()));
 
-        IncrementalSourceReaderWithCommit reader =
-                createReader(
+        IncrementalSourceReaderWithCommit<SourceRecord, JdbcSourceConfig> reader =
+                this.createReader(
                         sourceConfig, new TestingReaderContext(), SnapshotPhaseHooks.empty(), 1);
         reader.start();
 
@@ -117,7 +113,7 @@ class SqlserverSourceReaderTest extends SqlServerSourceTestBase {
 
         StreamSplit streamSplit =
                 new StreamSplit(
-                        STREAM_SPLIT_ID,
+                        StreamSplit.STREAM_SPLIT_ID,
                         new LsnFactory().newOffset(offset.getOffset()),
                         new LsnFactory().createNoStoppingOffset(),
                         new ArrayList<>(),
@@ -148,7 +144,7 @@ class SqlserverSourceReaderTest extends SqlServerSourceTestBase {
         reader.close();
 
         // step-3: mock failover from a restored state
-        IncrementalSourceReaderWithCommit restartReader =
+        IncrementalSourceReaderWithCommit<SourceRecord, JdbcSourceConfig> restartReader =
                 createReader(
                         sourceConfig, new TestingReaderContext(), SnapshotPhaseHooks.empty(), 10);
         restartReader.start();
@@ -184,31 +180,30 @@ class SqlserverSourceReaderTest extends SqlServerSourceTestBase {
     }
 
     private List<String> consumeRecords(
-            IncrementalSourceReaderWithCommit sourceReader, DataType recordType) throws Exception {
+            IncrementalSourceReaderWithCommit<SourceRecord, JdbcSourceConfig> sourceReader,
+            DataType recordType)
+            throws Exception {
         // Poll all the n records of the single split.
         final SimpleReaderOutput output = new SimpleReaderOutput();
         InputStatus status;
         do {
             status = sourceReader.pollNext(output);
-        } while (MORE_AVAILABLE == status || output.getResults().isEmpty());
+        } while (InputStatus.MORE_AVAILABLE == status || output.getResults().isEmpty());
         final RecordsFormatter formatter = new RecordsFormatter(recordType);
         return formatter.format(output.getResults());
     }
 
-    public IncrementalSourceReaderWithCommit createReader(
+    public <T> IncrementalSourceReaderWithCommit<T, JdbcSourceConfig> createReader(
             SqlServerSourceConfig sourceConfig,
             SourceReaderContext readerContext,
             SnapshotPhaseHooks snapshotHooks,
             int limit)
             throws Exception {
         // create source config for the given subtask (e.g. unique server id)
-        FutureCompletingBlockingQueue<RecordsWithSplitIds<SourceRecords>> elementsQueue =
-                new FutureCompletingBlockingQueue<>();
-
         IncrementalSourceReaderContext incrementalSourceReaderContext =
                 new IncrementalSourceReaderContext(readerContext);
 
-        Supplier splitReaderSupplier =
+        Supplier<IncrementalSourceSplitReader<JdbcSourceConfig>> splitReaderSupplier =
                 () ->
                         new IncrementalSourceSplitReader<>(
                                 readerContext.getIndexOfSubtask(),
@@ -217,16 +212,15 @@ class SqlserverSourceReaderTest extends SqlServerSourceTestBase {
                                 incrementalSourceReaderContext,
                                 snapshotHooks);
 
-        final RecordEmitter recordEmitter =
+        final RecordEmitter<SourceRecords, T, SourceSplitState> recordEmitter =
                 new SqlserverLimitRecordEmitter<>(
-                        new ForwardDeserializeSchema(),
+                        new ForwardDeserializeSchema<>(),
                         new SourceReaderMetrics(readerContext.metricGroup()),
                         sourceConfig.isIncludeSchemaChanges(),
                         new LsnFactory(),
                         limit);
 
-        return new IncrementalSourceReaderWithCommit(
-                elementsQueue,
+        return new IncrementalSourceReaderWithCommit<>(
                 splitReaderSupplier,
                 recordEmitter,
                 readerContext.getConfiguration(),
@@ -275,7 +269,7 @@ class SqlserverSourceReaderTest extends SqlServerSourceTestBase {
         }
 
         @Override
-        public SourceOutput<SourceRecord> createOutputForSplit(java.lang.String splitId) {
+        public SourceOutput<SourceRecord> createOutputForSplit(String splitId) {
             return this;
         }
 
@@ -288,7 +282,7 @@ class SqlserverSourceReaderTest extends SqlServerSourceTestBase {
         private static final long serialVersionUID = 1L;
 
         @Override
-        public void deserialize(SourceRecord record, Collector<T> out) throws Exception {
+        public void deserialize(SourceRecord record, Collector<T> out) {
             out.collect((T) record);
         }
 

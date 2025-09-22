@@ -17,13 +17,15 @@
 
 package org.apache.flink.cdc.connectors.oracle.source;
 
-import org.apache.flink.api.common.restartstrategy.RestartStrategies;
+import org.apache.flink.cdc.connectors.oracle.testutils.OracleTestUtils;
 import org.apache.flink.cdc.connectors.oracle.testutils.OracleTestUtils.FailoverPhase;
 import org.apache.flink.cdc.connectors.oracle.testutils.OracleTestUtils.FailoverType;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.RestartStrategyOptions;
+import org.apache.flink.configuration.StateRecoveryOptions;
 import org.apache.flink.core.execution.JobClient;
+import org.apache.flink.core.execution.SavepointFormatType;
 import org.apache.flink.runtime.checkpoint.CheckpointException;
-import org.apache.flink.runtime.jobgraph.SavepointConfigOptions;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.api.TableResult;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
@@ -41,6 +43,7 @@ import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -52,12 +55,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
-
-import static java.lang.String.format;
-import static org.apache.flink.cdc.connectors.oracle.testutils.OracleTestUtils.getTableNameRegex;
-import static org.apache.flink.cdc.connectors.oracle.testutils.OracleTestUtils.triggerFailover;
-import static org.apache.flink.cdc.connectors.oracle.testutils.OracleTestUtils.waitForSinkSize;
-import static org.apache.flink.cdc.connectors.oracle.testutils.OracleTestUtils.waitForUpsertSinkSize;
 
 /** IT tests to cover various newly added tables during capture process. */
 @Timeout(value = 600, unit = TimeUnit.SECONDS)
@@ -86,19 +83,21 @@ class NewlyAddedTableITCase extends OracleSourceTestBase {
             // prepare initial data for given table
             String tableId = ORACLE_SCHEMA + ".PRODUCE_LOG_TABLE";
             statement.execute(
-                    format(
+                    String.format(
                             "CREATE TABLE %s ( ID NUMBER(19), CNT NUMBER(19), PRIMARY KEY(ID))",
                             tableId));
-            statement.execute(format("INSERT INTO  %s VALUES (0, 100)", tableId));
-            statement.execute(format("INSERT INTO  %s VALUES (1, 101)", tableId));
-            statement.execute(format("INSERT INTO  %s VALUES (2, 102)", tableId));
+            statement.execute(String.format("INSERT INTO  %s VALUES (0, 100)", tableId));
+            statement.execute(String.format("INSERT INTO  %s VALUES (1, 101)", tableId));
+            statement.execute(String.format("INSERT INTO  %s VALUES (2, 102)", tableId));
             connection.commit();
 
             // mock continuous redo log during the newly added table capturing process
             mockRedoLogExecutor.schedule(
                     () -> {
                         try {
-                            executeSql(format("UPDATE %s SET  CNT = CNT +1 WHERE ID < 2", tableId));
+                            executeSql(
+                                    String.format(
+                                            "UPDATE %s SET  CNT = CNT +1 WHERE ID < 2", tableId));
                         } catch (Exception e) {
                             e.printStackTrace();
                         }
@@ -378,21 +377,21 @@ class NewlyAddedTableITCase extends OracleSourceTestBase {
                             + " 'sink-insert-only' = 'false'"
                             + ")");
             TableResult tableResult = tEnv.executeSql("insert into sink select * from address");
-            JobClient jobClient = tableResult.getJobClient().get();
+            JobClient jobClient = tableResult.getJobClient().orElseThrow();
 
             // this round's snapshot data
             fetchedDataList.addAll(
                     Arrays.asList(
-                            format(
+                            String.format(
                                     "+I[%s, 416874195632735147, China, %s, %s West Town address 1]",
                                     captureTableThisRound, cityName, cityName),
-                            format(
+                            String.format(
                                     "+I[%s, 416927583791428523, China, %s, %s West Town address 2]",
                                     captureTableThisRound, cityName, cityName),
-                            format(
+                            String.format(
                                     "+I[%s, 417022095255614379, China, %s, %s West Town address 3]",
                                     captureTableThisRound, cityName, cityName)));
-            waitForSinkSize("sink", fetchedDataList.size());
+            OracleTestUtils.waitForSinkSize("sink", fetchedDataList.size());
             assertEqualsInAnyOrder(
                     fetchedDataList, TestValuesTableFactory.getRawResultsAsStrings("sink"));
 
@@ -406,10 +405,10 @@ class NewlyAddedTableITCase extends OracleSourceTestBase {
             // this round's redo log data
             fetchedDataList.addAll(
                     Arrays.asList(
-                            format(
+                            String.format(
                                     "+U[%s, 416874195632735147, CHINA_%s, %s, %s West Town address 1]",
                                     captureTableThisRound, round, cityName, cityName),
-                            format(
+                            String.format(
                                     "+I[%s, %d, China, %s, %s West Town address 4]",
                                     captureTableThisRound,
                                     417022095255614380L + round,
@@ -417,7 +416,7 @@ class NewlyAddedTableITCase extends OracleSourceTestBase {
                                     cityName)));
 
             // step 3: assert fetched redo log data in this round
-            waitForSinkSize("sink", fetchedDataList.size());
+            OracleTestUtils.waitForSinkSize("sink", fetchedDataList.size());
 
             assertEqualsInAnyOrder(
                     fetchedDataList, TestValuesTableFactory.getRawResultsAsStrings("sink"));
@@ -445,13 +444,13 @@ class NewlyAddedTableITCase extends OracleSourceTestBase {
             String cityName = table.split("_")[1];
             fetchedDataList.addAll(
                     Arrays.asList(
-                            format(
+                            String.format(
                                     "+I[%s, 416874195632735147, China, %s, %s West Town address 1]",
                                     table, cityName, cityName),
-                            format(
+                            String.format(
                                     "+I[%s, 416927583791428523, China, %s, %s West Town address 2]",
                                     table, cityName, cityName),
-                            format(
+                            String.format(
                                     "+I[%s, 417022095255614379, China, %s, %s West Town address 3]",
                                     table, cityName, cityName)));
         }
@@ -479,17 +478,17 @@ class NewlyAddedTableITCase extends OracleSourceTestBase {
                             + " 'sink-insert-only' = 'false'"
                             + ")");
             TableResult tableResult = tEnv.executeSql("insert into sink select * from address");
-            JobClient jobClient = tableResult.getJobClient().get();
+            JobClient jobClient = tableResult.getJobClient().orElseThrow();
 
             // trigger failover after some snapshot data read finished
             if (failoverPhase == FailoverPhase.SNAPSHOT) {
-                triggerFailover(
+                OracleTestUtils.triggerFailover(
                         failoverType,
                         jobClient.getJobID(),
                         miniClusterResource.get().getMiniCluster(),
                         () -> sleepMs(100));
             }
-            waitForSinkSize("sink", fetchedDataList.size());
+            OracleTestUtils.waitForSinkSize("sink", fetchedDataList.size());
             assertEqualsInAnyOrder(
                     fetchedDataList, TestValuesTableFactory.getRawResultsAsStrings("sink"));
             // sleep 10s to wait for the assign status to INITIAL_ASSIGNING_FINISHED.
@@ -503,9 +502,8 @@ class NewlyAddedTableITCase extends OracleSourceTestBase {
         // test removing table one by one, note that there should be at least one table remaining
         for (int round = 0; round < captureAddressTables.length - 1; round++) {
             String[] captureTablesThisRound =
-                    Arrays.asList(captureAddressTables)
-                            .subList(round + 1, captureAddressTables.length)
-                            .toArray(new String[0]);
+                    Arrays.copyOfRange(
+                            captureAddressTables, round + 1, captureAddressTables.length);
 
             StreamExecutionEnvironment env =
                     getStreamExecutionEnvironmentFromSavePoint(finishedSavePointPath, parallelism);
@@ -527,9 +525,9 @@ class NewlyAddedTableITCase extends OracleSourceTestBase {
                             + " 'sink-insert-only' = 'false'"
                             + ")");
             TableResult tableResult = tEnv.executeSql("insert into sink select * from address");
-            JobClient jobClient = tableResult.getJobClient().get();
+            JobClient jobClient = tableResult.getJobClient().orElseThrow();
 
-            waitForSinkSize("sink", fetchedDataList.size());
+            OracleTestUtils.waitForSinkSize("sink", fetchedDataList.size());
             assertEqualsInAnyOrder(
                     fetchedDataList, TestValuesTableFactory.getRawResultsAsStrings("sink"));
 
@@ -548,10 +546,10 @@ class NewlyAddedTableITCase extends OracleSourceTestBase {
 
                 expectedRedoLogDataThisRound.addAll(
                         Arrays.asList(
-                                format(
+                                String.format(
                                         "+U[%s, 416874195632735147, CHINA_%s, %s, %s West Town address 1]",
                                         tableName, round, cityName, cityName),
-                                format(
+                                String.format(
                                         "+I[%s, %d, China, %s, %s West Town address 4]",
                                         tableName,
                                         417022095255614380L + round,
@@ -562,7 +560,7 @@ class NewlyAddedTableITCase extends OracleSourceTestBase {
             if (failoverPhase == FailoverPhase.REDO_LOG
                     && TestValuesTableFactory.getRawResultsAsStrings("sink").size()
                             > fetchedDataList.size()) {
-                triggerFailover(
+                OracleTestUtils.triggerFailover(
                         failoverType,
                         jobClient.getJobID(),
                         miniClusterResource.get().getMiniCluster(),
@@ -571,7 +569,7 @@ class NewlyAddedTableITCase extends OracleSourceTestBase {
 
             fetchedDataList.addAll(expectedRedoLogDataThisRound);
             // step 4: assert fetched redo log data in this round
-            waitForSinkSize("sink", fetchedDataList.size());
+            OracleTestUtils.waitForSinkSize("sink", fetchedDataList.size());
             assertEqualsInAnyOrder(
                     fetchedDataList, TestValuesTableFactory.getRawResultsAsStrings("sink"));
 
@@ -615,10 +613,7 @@ class NewlyAddedTableITCase extends OracleSourceTestBase {
         String finishedSavePointPath = null;
         List<String> fetchedDataList = new ArrayList<>();
         for (int round = 0; round < captureAddressTables.length; round++) {
-            String[] captureTablesThisRound =
-                    Arrays.asList(captureAddressTables)
-                            .subList(0, round + 1)
-                            .toArray(new String[0]);
+            String[] captureTablesThisRound = Arrays.copyOf(captureAddressTables, round + 1);
             String newlyAddedTable = captureAddressTables[round];
             if (makeRedoLogBeforeCapture) {
                 makeRedoLogBeforeCaptureForAddressTable(newlyAddedTable);
@@ -643,48 +638,48 @@ class NewlyAddedTableITCase extends OracleSourceTestBase {
                             + " 'sink-insert-only' = 'false'"
                             + ")");
             TableResult tableResult = tEnv.executeSql("insert into sink select * from address");
-            JobClient jobClient = tableResult.getJobClient().get();
+            JobClient jobClient = tableResult.getJobClient().orElseThrow();
 
             // step 2: assert fetched snapshot data in this round
             String cityName = newlyAddedTable.split("_")[1];
             List<String> expectedSnapshotDataThisRound =
                     Arrays.asList(
-                            format(
+                            String.format(
                                     "+I[%s, 416874195632735147, China, %s, %s West Town address 1]",
                                     newlyAddedTable, cityName, cityName),
-                            format(
+                            String.format(
                                     "+I[%s, 416927583791428523, China, %s, %s West Town address 2]",
                                     newlyAddedTable, cityName, cityName),
-                            format(
+                            String.format(
                                     "+I[%s, 417022095255614379, China, %s, %s West Town address 3]",
                                     newlyAddedTable, cityName, cityName));
             if (makeRedoLogBeforeCapture) {
                 expectedSnapshotDataThisRound =
                         Arrays.asList(
-                                format(
+                                String.format(
                                         "+I[%s, 416874195632735147, China, %s, %s West Town address 1]",
                                         newlyAddedTable, cityName, cityName),
-                                format(
+                                String.format(
                                         "+I[%s, 416927583791428523, China, %s, %s West Town address 2]",
                                         newlyAddedTable, cityName, cityName),
-                                format(
+                                String.format(
                                         "+I[%s, 417022095255614379, China, %s, %s West Town address 3]",
                                         newlyAddedTable, cityName, cityName),
-                                format(
+                                String.format(
                                         "+I[%s, 417022095255614381, China, %s, %s West Town address 5]",
                                         newlyAddedTable, cityName, cityName));
             }
 
             // trigger failover after some snapshot data read finished
             if (failoverPhase == FailoverPhase.SNAPSHOT) {
-                triggerFailover(
+                OracleTestUtils.triggerFailover(
                         failoverType,
                         jobClient.getJobID(),
                         miniClusterResource.get().getMiniCluster(),
                         () -> sleepMs(100));
             }
             fetchedDataList.addAll(expectedSnapshotDataThisRound);
-            waitForUpsertSinkSize("sink", fetchedDataList.size());
+            OracleTestUtils.waitForUpsertSinkSize("sink", fetchedDataList.size());
             assertEqualsInAnyOrder(
                     fetchedDataList, TestValuesTableFactory.getResultsAsStrings("sink"));
             // Wait 1s until snapshot phase finished, make sure the binlog data is not lost.
@@ -693,7 +688,7 @@ class NewlyAddedTableITCase extends OracleSourceTestBase {
             // step 3: make some redo log data for this round
             makeFirstPartRedoLogForAddressTable(newlyAddedTable);
             if (failoverPhase == FailoverPhase.REDO_LOG) {
-                triggerFailover(
+                OracleTestUtils.triggerFailover(
                         failoverType,
                         jobClient.getJobID(),
                         miniClusterResource.get().getMiniCluster(),
@@ -708,24 +703,24 @@ class NewlyAddedTableITCase extends OracleSourceTestBase {
                             .filter(
                                     r ->
                                             !r.contains(
-                                                    format(
+                                                    String.format(
                                                             "%s, 416874195632735147",
                                                             newlyAddedTable)))
                             .collect(Collectors.toList());
             List<String> expectedRedoLogUpsertDataThisRound =
                     Arrays.asList(
                             // add the new data with id 416874195632735147
-                            format(
+                            String.format(
                                     "+I[%s, 416874195632735147, CHINA, %s, %s West Town address 1]",
                                     newlyAddedTable, cityName, cityName),
-                            format(
+                            String.format(
                                     "+I[%s, 417022095255614380, China, %s, %s West Town address 4]",
                                     newlyAddedTable, cityName, cityName));
 
             // step 5: assert fetched redo log data in this round
             fetchedDataList.addAll(expectedRedoLogUpsertDataThisRound);
 
-            waitForUpsertSinkSize("sink", fetchedDataList.size());
+            OracleTestUtils.waitForUpsertSinkSize("sink", fetchedDataList.size());
             // the result size of sink may arrive fetchedDataList.size() with old data, wait one
             // checkpoint to wait retract old record and send new record
             Thread.sleep(1000);
@@ -742,7 +737,7 @@ class NewlyAddedTableITCase extends OracleSourceTestBase {
 
     private void initialAddressTables(Connection connection, String[] addressTables)
             throws SQLException {
-        try {
+        try (connection) {
             connection.setAutoCommit(false);
             Statement statement = connection.createStatement();
             for (String tableName : addressTables) {
@@ -760,38 +755,37 @@ class NewlyAddedTableITCase extends OracleSourceTestBase {
                                 + "  PRIMARY KEY(ID)"
                                 + ")");
                 statement.execute(
-                        format(
+                        String.format(
                                 "INSERT INTO  %s "
                                         + "VALUES (416874195632735147, 'China', '%s', '%s West Town address 1')",
                                 tableId, cityName, cityName));
                 statement.execute(
-                        format(
+                        String.format(
                                 "INSERT INTO  %s "
                                         + "VALUES (416927583791428523, 'China', '%s', '%s West Town address 2')",
                                 tableId, cityName, cityName));
                 statement.execute(
-                        format(
+                        String.format(
                                 "INSERT INTO  %s "
                                         + "VALUES (417022095255614379, 'China', '%s', '%s West Town address 3')",
                                 tableId, cityName, cityName));
             }
             connection.commit();
-        } finally {
-            connection.close();
         }
     }
 
     private void makeFirstPartRedoLogForAddressTable(String tableName) throws Exception {
         String tableId = ORACLE_SCHEMA + '.' + tableName;
         executeSql(
-                format("UPDATE %s SET COUNTRY = 'CHINA' where ID = 416874195632735147", tableId));
+                String.format(
+                        "UPDATE %s SET COUNTRY = 'CHINA' where ID = 416874195632735147", tableId));
     }
 
     private void makeSecondPartRedoLogForAddressTable(String tableName) throws Exception {
         String tableId = ORACLE_SCHEMA + '.' + tableName;
         String cityName = tableName.split("_")[1];
         executeSql(
-                format(
+                String.format(
                         "INSERT INTO %s VALUES(417022095255614380, 'China','%s','%s West Town address 4')",
                         tableId, cityName, cityName));
     }
@@ -800,7 +794,7 @@ class NewlyAddedTableITCase extends OracleSourceTestBase {
         String tableId = ORACLE_SCHEMA + '.' + tableName;
         String cityName = tableName.split("_")[1];
         executeSql(
-                format(
+                String.format(
                         "INSERT INTO %s VALUES(417022095255614381, 'China','%s','%s West Town address 5')",
                         tableId, cityName, cityName));
     }
@@ -809,11 +803,11 @@ class NewlyAddedTableITCase extends OracleSourceTestBase {
         String tableId = ORACLE_SCHEMA + '.' + tableName;
         String cityName = tableName.split("_")[1];
         executeSql(
-                format(
+                String.format(
                         "UPDATE %s SET COUNTRY = 'CHINA_%s' where id = 416874195632735147",
                         tableId, round));
         executeSql(
-                format(
+                String.format(
                         "INSERT INTO %s VALUES(%d, 'China','%s','%s West Town address 4')",
                         tableId, 417022095255614380L + round, cityName, cityName));
     }
@@ -831,7 +825,9 @@ class NewlyAddedTableITCase extends OracleSourceTestBase {
         // retry 600 times, it takes 100 milliseconds per time, at most retry 1 minute
         while (retryTimes < 600) {
             try {
-                return jobClient.triggerSavepoint(savepointDirectory).get();
+                return jobClient
+                        .triggerSavepoint(savepointDirectory, SavepointFormatType.DEFAULT)
+                        .get();
             } catch (Exception e) {
                 Optional<CheckpointException> exception =
                         ExceptionUtils.findThrowable(e, CheckpointException.class);
@@ -848,16 +844,21 @@ class NewlyAddedTableITCase extends OracleSourceTestBase {
     }
 
     private StreamExecutionEnvironment getStreamExecutionEnvironmentFromSavePoint(
-            String finishedSavePointPath, int parallelism) throws Exception {
+            String finishedSavePointPath, int parallelism) {
         Configuration configuration = new Configuration();
         if (finishedSavePointPath != null) {
-            configuration.setString(SavepointConfigOptions.SAVEPOINT_PATH, finishedSavePointPath);
+            configuration.set(StateRecoveryOptions.SAVEPOINT_PATH, finishedSavePointPath);
         }
+        configuration.set(
+                RestartStrategyOptions.RESTART_STRATEGY,
+                RestartStrategyOptions.RestartStrategyType.FIXED_DELAY.getMainValue());
+        configuration.set(RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_ATTEMPTS, 3);
+        configuration.set(
+                RestartStrategyOptions.RESTART_STRATEGY_FIXED_DELAY_DELAY, Duration.ofSeconds(100));
         StreamExecutionEnvironment env =
                 StreamExecutionEnvironment.getExecutionEnvironment(configuration);
         env.setParallelism(parallelism);
         env.enableCheckpointing(200L);
-        env.setRestartStrategy(RestartStrategies.fixedDelayRestart(3, 100L));
         return env;
     }
 
@@ -896,7 +897,7 @@ class NewlyAddedTableITCase extends OracleSourceTestBase {
                 TOP_SECRET,
                 ORACLE_DATABASE,
                 ORACLE_SCHEMA,
-                getTableNameRegex(captureTableNames),
+                OracleTestUtils.getTableNameRegex(captureTableNames),
                 otherOptions.isEmpty()
                         ? ""
                         : ","

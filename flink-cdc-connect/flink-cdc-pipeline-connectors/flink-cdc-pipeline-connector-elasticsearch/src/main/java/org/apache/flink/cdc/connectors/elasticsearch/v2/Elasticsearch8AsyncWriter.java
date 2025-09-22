@@ -19,15 +19,17 @@
 
 package org.apache.flink.cdc.connectors.elasticsearch.v2;
 
-import org.apache.flink.api.connector.sink2.Sink;
+import org.apache.flink.api.connector.sink2.WriterInitContext;
 import org.apache.flink.connector.base.sink.throwable.FatalExceptionClassifier;
 import org.apache.flink.connector.base.sink.writer.AsyncSinkWriter;
 import org.apache.flink.connector.base.sink.writer.BufferedRequestState;
 import org.apache.flink.connector.base.sink.writer.ElementConverter;
+import org.apache.flink.connector.base.sink.writer.ResultHandler;
 import org.apache.flink.connector.base.sink.writer.config.AsyncSinkWriterConfiguration;
 import org.apache.flink.metrics.Counter;
 import org.apache.flink.metrics.groups.SinkWriterMetricGroup;
 import org.apache.flink.util.FlinkRuntimeException;
+import org.apache.flink.util.Preconditions;
 
 import co.elastic.clients.elasticsearch.ElasticsearchAsyncClient;
 import co.elastic.clients.elasticsearch.core.BulkRequest;
@@ -41,11 +43,7 @@ import java.net.ConnectException;
 import java.net.NoRouteToHostException;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.List;
-import java.util.function.Consumer;
-
-import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
  * Elasticsearch8AsyncWriter Apache Flink's Async Sink Writer that submits Operations into an
@@ -82,7 +80,7 @@ public class Elasticsearch8AsyncWriter<InputT> extends AsyncSinkWriter<InputT, O
 
     public Elasticsearch8AsyncWriter(
             ElementConverter<InputT, Operation> elementConverter,
-            Sink.InitContext context,
+            WriterInitContext context,
             int maxBatchSize,
             int maxInFlightRequests,
             int maxBufferedRequests,
@@ -106,7 +104,7 @@ public class Elasticsearch8AsyncWriter<InputT> extends AsyncSinkWriter<InputT, O
 
         this.esClient = networkConfig.createEsClient();
         final SinkWriterMetricGroup metricGroup = context.metricGroup();
-        checkNotNull(metricGroup);
+        Preconditions.checkNotNull(metricGroup);
 
         this.numRecordsOutErrorsCounter = metricGroup.getNumRecordsOutErrorsCounter();
         this.numRecordsSendPartialFailureCounter =
@@ -116,7 +114,7 @@ public class Elasticsearch8AsyncWriter<InputT> extends AsyncSinkWriter<InputT, O
 
     @Override
     protected void submitRequestEntries(
-            List<Operation> requestEntries, Consumer<List<Operation>> requestResult) {
+            List<Operation> requestEntries, ResultHandler<Operation> requestResult) {
         numRequestSubmittedCounter.inc();
         LOG.debug("submitRequestEntries with {} items", requestEntries.size());
 
@@ -144,7 +142,7 @@ public class Elasticsearch8AsyncWriter<InputT> extends AsyncSinkWriter<InputT, O
 
     private void handleFailedRequest(
             List<Operation> requestEntries,
-            Consumer<List<Operation>> requestResult,
+            ResultHandler<Operation> requestResult,
             Throwable error) {
         LOG.warn(
                 "The BulkRequest of {} operation(s) has failed due to: {}",
@@ -154,13 +152,13 @@ public class Elasticsearch8AsyncWriter<InputT> extends AsyncSinkWriter<InputT, O
         numRecordsOutErrorsCounter.inc(requestEntries.size());
 
         if (isRetryable(error.getCause())) {
-            requestResult.accept(requestEntries);
+            requestResult.retryForEntries(requestEntries);
         }
     }
 
     private void handlePartiallyFailedRequest(
             List<Operation> requestEntries,
-            Consumer<List<Operation>> requestResult,
+            ResultHandler<Operation> requestResult,
             BulkResponse response) {
         LOG.debug("The BulkRequest has failed partially. Response: {}", response);
         ArrayList<Operation> failedItems = new ArrayList<>();
@@ -180,16 +178,16 @@ public class Elasticsearch8AsyncWriter<InputT> extends AsyncSinkWriter<InputT, O
                 requestEntries.size(),
                 failedItems.size(),
                 response.took());
-        requestResult.accept(failedItems);
+        requestResult.retryForEntries(failedItems);
     }
 
     private void handleSuccessfulRequest(
-            Consumer<List<Operation>> requestResult, BulkResponse response) {
+            ResultHandler<Operation> requestResult, BulkResponse response) {
         LOG.debug(
                 "The BulkRequest of {} operation(s) completed successfully. It took {}ms",
                 response.items().size(),
                 response.took());
-        requestResult.accept(Collections.emptyList());
+        requestResult.complete();
     }
 
     private boolean isRetryable(Throwable error) {

@@ -44,8 +44,6 @@ import org.apache.flink.cdc.connectors.oracle.source.meta.offset.RedoLogOffsetFa
 import org.apache.flink.cdc.connectors.oracle.testutils.RecordsFormatter;
 import org.apache.flink.cdc.debezium.DebeziumDeserializationSchema;
 import org.apache.flink.connector.base.source.reader.RecordEmitter;
-import org.apache.flink.connector.base.source.reader.RecordsWithSplitIds;
-import org.apache.flink.connector.base.source.reader.synchronization.FutureCompletingBlockingQueue;
 import org.apache.flink.connector.testutils.source.reader.TestingReaderContext;
 import org.apache.flink.core.io.InputStatus;
 import org.apache.flink.metrics.groups.SourceReaderMetricGroup;
@@ -67,8 +65,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
-
-import static org.apache.flink.core.io.InputStatus.MORE_AVAILABLE;
 
 /** Tests for {@link IncrementalSourceReader}. */
 public class OracleSourceReaderTest extends OracleSourceTestBase {
@@ -223,8 +219,6 @@ public class OracleSourceReaderTest extends OracleSourceTestBase {
 
     private IncrementalSourceReader<SourceRecord, JdbcSourceConfig> createReader(
             OracleSourceConfig configuration, SourceReaderContext readerContext) {
-        final FutureCompletingBlockingQueue<RecordsWithSplitIds<SourceRecords>> elementsQueue =
-                new FutureCompletingBlockingQueue<>();
         final SourceReaderMetricGroup sourceReaderMetricGroup = readerContext.metricGroup();
         final SourceReaderMetrics sourceReaderMetrics =
                 new SourceReaderMetrics(sourceReaderMetricGroup);
@@ -247,7 +241,6 @@ public class OracleSourceReaderTest extends OracleSourceTestBase {
                                 incrementalSourceReaderContext,
                                 SnapshotPhaseHooks.empty());
         return new IncrementalSourceReader<>(
-                elementsQueue,
                 splitReaderSupplier,
                 recordEmitter,
                 readerContext.getConfiguration(),
@@ -290,8 +283,8 @@ public class OracleSourceReaderTest extends OracleSourceTestBase {
             throws Exception {
         // Poll all the n records of the single split.
         final SimpleReaderOutput output = new SimpleReaderOutput();
-        InputStatus status = MORE_AVAILABLE;
-        while (MORE_AVAILABLE == status || output.getResults().size() < size) {
+        InputStatus status = InputStatus.MORE_AVAILABLE;
+        while (InputStatus.MORE_AVAILABLE == status || output.getResults().size() < size) {
             status = sourceReader.pollNext(output);
         }
         final RecordsFormatter formatter = new RecordsFormatter(recordType);
@@ -345,7 +338,7 @@ public class OracleSourceReaderTest extends OracleSourceTestBase {
         private static final long serialVersionUID = 1L;
 
         @Override
-        public void deserialize(SourceRecord record, Collector<SourceRecord> out) throws Exception {
+        public void deserialize(SourceRecord record, Collector<SourceRecord> out) {
             out.collect(record);
         }
 

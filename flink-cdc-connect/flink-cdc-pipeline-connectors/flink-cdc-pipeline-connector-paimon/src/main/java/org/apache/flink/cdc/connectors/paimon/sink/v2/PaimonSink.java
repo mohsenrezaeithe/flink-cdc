@@ -19,12 +19,15 @@ package org.apache.flink.cdc.connectors.paimon.sink.v2;
 
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.connector.sink2.Committer;
+import org.apache.flink.api.connector.sink2.CommitterInitContext;
 import org.apache.flink.api.connector.sink2.Sink;
+import org.apache.flink.api.connector.sink2.SupportsCommitter;
+import org.apache.flink.api.connector.sink2.WriterInitContext;
 import org.apache.flink.core.io.SimpleVersionedSerializer;
 import org.apache.flink.runtime.checkpoint.CheckpointIDCounter;
 import org.apache.flink.streaming.api.connector.sink2.CommittableMessage;
 import org.apache.flink.streaming.api.connector.sink2.CommittableMessageTypeInfo;
-import org.apache.flink.streaming.api.connector.sink2.WithPreCommitTopology;
+import org.apache.flink.streaming.api.connector.sink2.SupportsPreCommitTopology;
 import org.apache.flink.streaming.api.datastream.DataStream;
 
 import org.apache.paimon.flink.sink.FlinkStreamPartitioner;
@@ -36,7 +39,10 @@ import org.apache.paimon.table.sink.CommitMessageSerializer;
 /**
  * A {@link Sink} for Paimon. Maintain this package until Paimon has it own sinkV2 implementation.
  */
-public class PaimonSink<InputT> implements WithPreCommitTopology<InputT, MultiTableCommittable> {
+public class PaimonSink<InputT>
+        implements Sink<InputT>,
+                SupportsCommitter<MultiTableCommittable>,
+                SupportsPreCommitTopology<MultiTableCommittable, MultiTableCommittable> {
 
     // provided a default commit user.
     public static final String DEFAULT_COMMIT_USER = "admin";
@@ -61,7 +67,7 @@ public class PaimonSink<InputT> implements WithPreCommitTopology<InputT, MultiTa
     }
 
     @Override
-    public PaimonWriter<InputT> createWriter(InitContext context) {
+    public PaimonWriter<InputT> createWriter(WriterInitContext context) {
         long lastCheckpointId =
                 context.getRestoredCheckpointId()
                         .orElse(CheckpointIDCounter.INITIAL_CHECKPOINT_ID - 1);
@@ -70,7 +76,8 @@ public class PaimonSink<InputT> implements WithPreCommitTopology<InputT, MultiTa
     }
 
     @Override
-    public Committer<MultiTableCommittable> createCommitter() {
+    public Committer<MultiTableCommittable> createCommitter(
+            CommitterInitContext committerInitContext) {
         return new PaimonCommitter(catalogOptions, commitUser);
     }
 
@@ -99,5 +106,11 @@ public class PaimonSink<InputT> implements WithPreCommitTopology<InputT, MultiTa
                         typeInformation,
                         new PreCommitOperator(catalogOptions, commitUser))
                 .setParallelism(committables.getParallelism());
+    }
+
+    @Override
+    public SimpleVersionedSerializer<MultiTableCommittable> getWriteResultSerializer() {
+        CommitMessageSerializer fileSerializer = new CommitMessageSerializer();
+        return new MultiTableCommittableSerializer(fileSerializer);
     }
 }

@@ -21,8 +21,7 @@ import org.apache.flink.cdc.common.event.Event;
 import org.apache.flink.streaming.runtime.operators.sink.DataSinkWriterOperator;
 
 /**
- * A generic {@link RuntimeException} thrown when an error occurs in {@link DataSinkWriterOperator}
- * and {@link org.apache.flink.cdc.runtime.operators.sink.DataSinkFunctionOperator}.
+ * A generic {@link RuntimeException} thrown when an error occurs in {@link DataSinkWriterOperator}.
  */
 public class SinkWrapperException extends RuntimeException {
     public SinkWrapperException(Event event, Throwable cause) {

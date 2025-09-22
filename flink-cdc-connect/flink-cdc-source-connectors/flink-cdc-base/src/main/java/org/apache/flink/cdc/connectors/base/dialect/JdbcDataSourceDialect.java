@@ -17,7 +17,6 @@
 
 package org.apache.flink.cdc.connectors.base.dialect;
 
-import org.apache.flink.cdc.common.annotation.Experimental;
 import org.apache.flink.cdc.connectors.base.config.JdbcSourceConfig;
 import org.apache.flink.cdc.connectors.base.config.SourceConfig;
 import org.apache.flink.cdc.connectors.base.relational.connection.JdbcConnectionPoolFactory;
@@ -34,7 +33,6 @@ import java.util.List;
 import java.util.Map;
 
 /** The dialect of JDBC data source. */
-@Experimental
 public interface JdbcDataSourceDialect extends DataSourceDialect<JdbcSourceConfig> {
 
     /** Discovers the list of table to capture. */

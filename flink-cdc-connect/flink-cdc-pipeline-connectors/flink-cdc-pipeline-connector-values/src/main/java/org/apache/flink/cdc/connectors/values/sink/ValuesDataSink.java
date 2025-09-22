@@ -19,6 +19,7 @@ package org.apache.flink.cdc.connectors.values.sink;
 
 import org.apache.flink.api.connector.sink2.Sink;
 import org.apache.flink.api.connector.sink2.SinkWriter;
+import org.apache.flink.api.connector.sink2.WriterInitContext;
 import org.apache.flink.cdc.common.annotation.Internal;
 import org.apache.flink.cdc.common.data.RecordData;
 import org.apache.flink.cdc.common.event.ChangeEvent;
@@ -95,12 +96,12 @@ public class ValuesDataSink implements DataSink, Serializable {
         }
 
         @Override
-        public SinkWriter<Event> createWriter(InitContext context) {
+        public SinkWriter<Event> createWriter(WriterInitContext context) {
             return new ValuesSinkWriter(
                     materializedInMemory,
                     print,
-                    context.getSubtaskId(),
-                    context.getNumberOfParallelSubtasks());
+                    context.getTaskInfo().getIndexOfThisSubtask(),
+                    context.getTaskInfo().getNumberOfParallelSubtasks());
         }
     }
 

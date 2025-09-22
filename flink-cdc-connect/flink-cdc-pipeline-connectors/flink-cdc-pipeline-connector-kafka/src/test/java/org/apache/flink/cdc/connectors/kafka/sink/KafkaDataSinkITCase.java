@@ -17,7 +17,6 @@
 
 package org.apache.flink.cdc.connectors.kafka.sink;
 
-import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.cdc.common.configuration.Configuration;
 import org.apache.flink.cdc.common.data.binary.BinaryStringData;
@@ -37,6 +36,7 @@ import org.apache.flink.cdc.common.types.RowType;
 import org.apache.flink.cdc.connectors.kafka.json.JsonSerializationType;
 import org.apache.flink.cdc.runtime.typeutils.BinaryRecordDataGenerator;
 import org.apache.flink.cdc.runtime.typeutils.EventTypeInfo;
+import org.apache.flink.configuration.RestartStrategyOptions;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.LocalStreamEnvironment;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
@@ -237,29 +237,34 @@ class KafkaDataSinkITCase extends TestLogger {
 
     @Test
     void testDebeziumJsonFormat() throws Exception {
-        final StreamExecutionEnvironment env = new LocalStreamEnvironment();
-        env.enableCheckpointing(1000L);
-        env.setRestartStrategy(RestartStrategies.noRestart());
-        final DataStream<Event> source =
-                env.fromCollection(createSourceEvents(), new EventTypeInfo());
-        Map<String, String> config = new HashMap<>();
-        Properties properties = getKafkaClientConfiguration();
-        properties.forEach(
-                (key, value) ->
-                        config.put(
-                                KafkaDataSinkOptions.PROPERTIES_PREFIX + key.toString(),
-                                value.toString()));
-        source.sinkTo(
-                ((FlinkSinkProvider)
-                                (new KafkaDataSinkFactory()
-                                        .createDataSink(
-                                                new FactoryHelper.DefaultContext(
-                                                        Configuration.fromMap(config),
-                                                        Configuration.fromMap(new HashMap<>()),
-                                                        this.getClass().getClassLoader()))
-                                        .getEventSinkProvider()))
-                        .getSink());
-        env.execute();
+        final org.apache.flink.configuration.Configuration conf =
+                new org.apache.flink.configuration.Configuration();
+        conf.set(
+                RestartStrategyOptions.RESTART_STRATEGY,
+                RestartStrategyOptions.RestartStrategyType.NO_RESTART_STRATEGY.getMainValue());
+        try (StreamExecutionEnvironment env = new LocalStreamEnvironment(conf)) {
+            env.enableCheckpointing(1000L);
+            final DataStream<Event> source =
+                    env.fromCollection(createSourceEvents(), new EventTypeInfo());
+            Map<String, String> config = new HashMap<>();
+            Properties properties = getKafkaClientConfiguration();
+            properties.forEach(
+                    (key, value) ->
+                            config.put(
+                                    KafkaDataSinkOptions.PROPERTIES_PREFIX + key.toString(),
+                                    value.toString()));
+            source.sinkTo(
+                    ((FlinkSinkProvider)
+                                    (new KafkaDataSinkFactory()
+                                            .createDataSink(
+                                                    new FactoryHelper.DefaultContext(
+                                                            Configuration.fromMap(config),
+                                                            Configuration.fromMap(new HashMap<>()),
+                                                            this.getClass().getClassLoader()))
+                                            .getEventSinkProvider()))
+                            .getSink());
+            env.execute();
+        }
 
         final List<ConsumerRecord<byte[], byte[]>> collectedRecords =
                 drainAllRecordsFromTopic(topic, false, 0);
@@ -295,32 +300,37 @@ class KafkaDataSinkITCase extends TestLogger {
 
     @Test
     void testCanalJsonFormat() throws Exception {
-        final StreamExecutionEnvironment env = new LocalStreamEnvironment();
-        env.enableCheckpointing(1000L);
-        env.setRestartStrategy(RestartStrategies.noRestart());
-        final DataStream<Event> source =
-                env.fromCollection(createSourceEvents(), new EventTypeInfo());
-        Map<String, String> config = new HashMap<>();
-        Properties properties = getKafkaClientConfiguration();
-        properties.forEach(
-                (key, value) ->
-                        config.put(
-                                KafkaDataSinkOptions.PROPERTIES_PREFIX + key.toString(),
-                                value.toString()));
-        config.put(
-                KafkaDataSinkOptions.VALUE_FORMAT.key(),
-                JsonSerializationType.CANAL_JSON.toString());
-        source.sinkTo(
-                ((FlinkSinkProvider)
-                                (new KafkaDataSinkFactory()
-                                        .createDataSink(
-                                                new FactoryHelper.DefaultContext(
-                                                        Configuration.fromMap(config),
-                                                        Configuration.fromMap(new HashMap<>()),
-                                                        this.getClass().getClassLoader()))
-                                        .getEventSinkProvider()))
-                        .getSink());
-        env.execute();
+        final org.apache.flink.configuration.Configuration conf =
+                new org.apache.flink.configuration.Configuration();
+        conf.set(
+                RestartStrategyOptions.RESTART_STRATEGY,
+                RestartStrategyOptions.RestartStrategyType.NO_RESTART_STRATEGY.getMainValue());
+        try (StreamExecutionEnvironment env = new LocalStreamEnvironment(conf)) {
+            env.enableCheckpointing(1000L);
+            final DataStream<Event> source =
+                    env.fromCollection(createSourceEvents(), new EventTypeInfo());
+            Map<String, String> config = new HashMap<>();
+            Properties properties = getKafkaClientConfiguration();
+            properties.forEach(
+                    (key, value) ->
+                            config.put(
+                                    KafkaDataSinkOptions.PROPERTIES_PREFIX + key.toString(),
+                                    value.toString()));
+            config.put(
+                    KafkaDataSinkOptions.VALUE_FORMAT.key(),
+                    JsonSerializationType.CANAL_JSON.toString());
+            source.sinkTo(
+                    ((FlinkSinkProvider)
+                                    (new KafkaDataSinkFactory()
+                                            .createDataSink(
+                                                    new FactoryHelper.DefaultContext(
+                                                            Configuration.fromMap(config),
+                                                            Configuration.fromMap(new HashMap<>()),
+                                                            this.getClass().getClassLoader()))
+                                            .getEventSinkProvider()))
+                            .getSink());
+            env.execute();
+        }
 
         final List<ConsumerRecord<byte[], byte[]>> collectedRecords =
                 drainAllRecordsFromTopic(topic, false, 0);
@@ -366,33 +376,38 @@ class KafkaDataSinkITCase extends TestLogger {
 
     @Test
     void testHashByKeyPartitionStrategyUsingJson() throws Exception {
-        final StreamExecutionEnvironment env = new LocalStreamEnvironment();
-        env.enableCheckpointing(1000L);
-        env.setRestartStrategy(RestartStrategies.noRestart());
-        final DataStream<Event> source =
-                env.fromCollection(createSourceEvents(), new EventTypeInfo());
-        Map<String, String> config = new HashMap<>();
-        Properties properties = getKafkaClientConfiguration();
-        properties.forEach(
-                (key, value) ->
-                        config.put(
-                                KafkaDataSinkOptions.PROPERTIES_PREFIX + key.toString(),
-                                value.toString()));
-        config.put(KafkaDataSinkOptions.KEY_FORMAT.key(), KeyFormat.JSON.toString());
-        config.put(
-                KafkaDataSinkOptions.VALUE_FORMAT.key(),
-                JsonSerializationType.CANAL_JSON.toString());
-        source.sinkTo(
-                ((FlinkSinkProvider)
-                                (new KafkaDataSinkFactory()
-                                        .createDataSink(
-                                                new FactoryHelper.DefaultContext(
-                                                        Configuration.fromMap(config),
-                                                        Configuration.fromMap(new HashMap<>()),
-                                                        this.getClass().getClassLoader()))
-                                        .getEventSinkProvider()))
-                        .getSink());
-        env.execute();
+        final org.apache.flink.configuration.Configuration conf =
+                new org.apache.flink.configuration.Configuration();
+        conf.set(
+                RestartStrategyOptions.RESTART_STRATEGY,
+                RestartStrategyOptions.RestartStrategyType.NO_RESTART_STRATEGY.getMainValue());
+        try (StreamExecutionEnvironment env = new LocalStreamEnvironment(conf)) {
+            env.enableCheckpointing(1000L);
+            final DataStream<Event> source =
+                    env.fromCollection(createSourceEvents(), new EventTypeInfo());
+            Map<String, String> config = new HashMap<>();
+            Properties properties = getKafkaClientConfiguration();
+            properties.forEach(
+                    (key, value) ->
+                            config.put(
+                                    KafkaDataSinkOptions.PROPERTIES_PREFIX + key.toString(),
+                                    value.toString()));
+            config.put(KafkaDataSinkOptions.KEY_FORMAT.key(), KeyFormat.JSON.toString());
+            config.put(
+                    KafkaDataSinkOptions.VALUE_FORMAT.key(),
+                    JsonSerializationType.CANAL_JSON.toString());
+            source.sinkTo(
+                    ((FlinkSinkProvider)
+                                    (new KafkaDataSinkFactory()
+                                            .createDataSink(
+                                                    new FactoryHelper.DefaultContext(
+                                                            Configuration.fromMap(config),
+                                                            Configuration.fromMap(new HashMap<>()),
+                                                            this.getClass().getClassLoader()))
+                                            .getEventSinkProvider()))
+                            .getSink());
+            env.execute();
+        }
 
         final List<ConsumerRecord<byte[], byte[]>> collectedRecords =
                 drainAllRecordsFromTopic(topic, false);
@@ -463,31 +478,36 @@ class KafkaDataSinkITCase extends TestLogger {
 
     @Test
     void testTopicAndHeaderOption() throws Exception {
-        final StreamExecutionEnvironment env = new LocalStreamEnvironment();
-        env.enableCheckpointing(1000L);
-        env.setRestartStrategy(RestartStrategies.noRestart());
-        final DataStream<Event> source =
-                env.fromCollection(createSourceEvents(), new EventTypeInfo());
-        Map<String, String> config = new HashMap<>();
-        config.put(KafkaDataSinkOptions.TOPIC.key(), "test_topic");
-        config.put(KafkaDataSinkOptions.SINK_ADD_TABLEID_TO_HEADER_ENABLED.key(), "true");
-        Properties properties = getKafkaClientConfiguration();
-        properties.forEach(
-                (key, value) ->
-                        config.put(
-                                KafkaDataSinkOptions.PROPERTIES_PREFIX + key.toString(),
-                                value.toString()));
-        source.sinkTo(
-                ((FlinkSinkProvider)
-                                (new KafkaDataSinkFactory()
-                                        .createDataSink(
-                                                new FactoryHelper.DefaultContext(
-                                                        Configuration.fromMap(config),
-                                                        Configuration.fromMap(new HashMap<>()),
-                                                        this.getClass().getClassLoader()))
-                                        .getEventSinkProvider()))
-                        .getSink());
-        env.execute();
+        final org.apache.flink.configuration.Configuration conf =
+                new org.apache.flink.configuration.Configuration();
+        conf.set(
+                RestartStrategyOptions.RESTART_STRATEGY,
+                RestartStrategyOptions.RestartStrategyType.NO_RESTART_STRATEGY.getMainValue());
+        try (StreamExecutionEnvironment env = new LocalStreamEnvironment(conf)) {
+            env.enableCheckpointing(1000L);
+            final DataStream<Event> source =
+                    env.fromCollection(createSourceEvents(), new EventTypeInfo());
+            Map<String, String> config = new HashMap<>();
+            config.put(KafkaDataSinkOptions.TOPIC.key(), "test_topic");
+            config.put(KafkaDataSinkOptions.SINK_ADD_TABLEID_TO_HEADER_ENABLED.key(), "true");
+            Properties properties = getKafkaClientConfiguration();
+            properties.forEach(
+                    (key, value) ->
+                            config.put(
+                                    KafkaDataSinkOptions.PROPERTIES_PREFIX + key.toString(),
+                                    value.toString()));
+            source.sinkTo(
+                    ((FlinkSinkProvider)
+                                    (new KafkaDataSinkFactory()
+                                            .createDataSink(
+                                                    new FactoryHelper.DefaultContext(
+                                                            Configuration.fromMap(config),
+                                                            Configuration.fromMap(new HashMap<>()),
+                                                            this.getClass().getClassLoader()))
+                                            .getEventSinkProvider()))
+                            .getSink());
+            env.execute();
+        }
 
         final List<ConsumerRecord<byte[], byte[]>> collectedRecords =
                 drainAllRecordsFromTopic("test_topic", false, 0);
@@ -558,31 +578,37 @@ class KafkaDataSinkITCase extends TestLogger {
 
     @Test
     void testSinkTableMapping() throws Exception {
-        final StreamExecutionEnvironment env = new LocalStreamEnvironment();
-        env.enableCheckpointing(1000L);
-        env.setRestartStrategy(RestartStrategies.noRestart());
-        final DataStream<Event> source = env.fromData(createSourceEvents(), new EventTypeInfo());
-        Map<String, String> config = new HashMap<>();
-        config.put(
-                KafkaDataSinkOptions.SINK_TABLE_ID_TO_TOPIC_MAPPING.key(),
-                "default_namespace.default_schema_copy.\\.*:test_topic_mapping_copy;default_namespace.default_schema.\\.*:test_topic_mapping");
-        Properties properties = getKafkaClientConfiguration();
-        properties.forEach(
-                (key, value) ->
-                        config.put(
-                                KafkaDataSinkOptions.PROPERTIES_PREFIX + key.toString(),
-                                value.toString()));
-        source.sinkTo(
-                ((FlinkSinkProvider)
-                                (new KafkaDataSinkFactory()
-                                        .createDataSink(
-                                                new FactoryHelper.DefaultContext(
-                                                        Configuration.fromMap(config),
-                                                        Configuration.fromMap(new HashMap<>()),
-                                                        this.getClass().getClassLoader()))
-                                        .getEventSinkProvider()))
-                        .getSink());
-        env.execute();
+        final org.apache.flink.configuration.Configuration conf =
+                new org.apache.flink.configuration.Configuration();
+        conf.set(
+                RestartStrategyOptions.RESTART_STRATEGY,
+                RestartStrategyOptions.RestartStrategyType.NO_RESTART_STRATEGY.getMainValue());
+        try (StreamExecutionEnvironment env = new LocalStreamEnvironment(conf)) {
+            env.enableCheckpointing(1000L);
+            final DataStream<Event> source =
+                    env.fromData(createSourceEvents(), new EventTypeInfo());
+            Map<String, String> config = new HashMap<>();
+            config.put(
+                    KafkaDataSinkOptions.SINK_TABLE_ID_TO_TOPIC_MAPPING.key(),
+                    "default_namespace.default_schema_copy.\\.*:test_topic_mapping_copy;default_namespace.default_schema.\\.*:test_topic_mapping");
+            Properties properties = getKafkaClientConfiguration();
+            properties.forEach(
+                    (key, value) ->
+                            config.put(
+                                    KafkaDataSinkOptions.PROPERTIES_PREFIX + key.toString(),
+                                    value.toString()));
+            source.sinkTo(
+                    ((FlinkSinkProvider)
+                                    (new KafkaDataSinkFactory()
+                                            .createDataSink(
+                                                    new FactoryHelper.DefaultContext(
+                                                            Configuration.fromMap(config),
+                                                            Configuration.fromMap(new HashMap<>()),
+                                                            this.getClass().getClassLoader()))
+                                            .getEventSinkProvider()))
+                            .getSink());
+            env.execute();
+        }
 
         final List<ConsumerRecord<byte[], byte[]>> collectedRecords =
                 drainAllRecordsFromTopic("test_topic_mapping", false, 0);

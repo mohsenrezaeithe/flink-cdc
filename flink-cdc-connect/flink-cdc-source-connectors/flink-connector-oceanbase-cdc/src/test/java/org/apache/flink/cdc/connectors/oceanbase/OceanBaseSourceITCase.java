@@ -17,7 +17,8 @@
 
 package org.apache.flink.cdc.connectors.oceanbase;
 
-import org.apache.flink.api.common.restartstrategy.RestartStrategies;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.RestartStrategyOptions;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.api.TableResult;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
@@ -32,11 +33,10 @@ import org.junit.jupiter.api.Test;
 
 import java.sql.Connection;
 import java.sql.Statement;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-
-import static java.lang.String.format;
 
 /** OceanBase CDC source connector integration test. */
 @Disabled(
@@ -60,14 +60,22 @@ public class OceanBaseSourceITCase extends OceanBaseSourceTestBase {
         int parallelism = 1;
         String[] captureCustomerTables = new String[] {"orders"};
 
-        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        final Configuration restartStrategyConf = new Configuration();
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY,
+                RestartStrategyOptions.RestartStrategyType.FIXED_DELAY.getMainValue());
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_ATTEMPTS, 1);
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY_FIXED_DELAY_DELAY, Duration.ofSeconds(0));
+        StreamExecutionEnvironment env =
+                StreamExecutionEnvironment.getExecutionEnvironment(restartStrategyConf);
         StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
 
         env.setParallelism(parallelism);
         env.enableCheckpointing(200L);
-        env.setRestartStrategy(RestartStrategies.fixedDelayRestart(1, 0));
         String sourceDDL =
-                format(
+                String.format(
                         "CREATE TABLE orders_source ("
                                 + " id BIGINT NOT NULL,"
                                 + " seller_id STRING,"
@@ -163,7 +171,7 @@ public class OceanBaseSourceITCase extends OceanBaseSourceTestBase {
         List<String> realBinlog = fetchRows(iterator, expectedBinlog.length);
         assertEqualsInOrder(expectedBinlogData, realBinlog);
         Thread.sleep(3_000);
-        tableResult.getJobClient().get().cancel().get();
+        tableResult.getJobClient().orElseThrow().cancel().get();
     }
 
     @Test
@@ -177,7 +185,7 @@ public class OceanBaseSourceITCase extends OceanBaseSourceTestBase {
         env.setParallelism(parallelism);
         env.enableCheckpointing(200L);
         String sourceDDL =
-                format(
+                String.format(
                         "CREATE TABLE oceanbase_full_types (\n"
                                 + "    `id` INT NOT NULL,\n"
                                 + "    tiny_c TINYINT,\n"
@@ -258,7 +266,7 @@ public class OceanBaseSourceITCase extends OceanBaseSourceTestBase {
                 };
         assertEqualsInAnyOrder(Arrays.asList(expectedSnapshotData), realSnapshotData);
         Thread.sleep(3_000);
-        tableResult.getJobClient().get().cancel().get();
+        tableResult.getJobClient().orElseThrow().cancel().get();
     }
 
     @Test
@@ -266,14 +274,22 @@ public class OceanBaseSourceITCase extends OceanBaseSourceTestBase {
         int parallelism = 1;
         String[] captureCustomerTables = new String[] {"orders_with_multi_pks"};
 
-        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        final Configuration restartStrategyConf = new Configuration();
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY,
+                RestartStrategyOptions.RestartStrategyType.FIXED_DELAY.getMainValue());
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_ATTEMPTS, 1);
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY_FIXED_DELAY_DELAY, Duration.ofSeconds(0));
+        StreamExecutionEnvironment env =
+                StreamExecutionEnvironment.getExecutionEnvironment(restartStrategyConf);
         StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
 
         env.setParallelism(parallelism);
         env.enableCheckpointing(200L);
-        env.setRestartStrategy(RestartStrategies.fixedDelayRestart(1, 0));
         String sourceDDL =
-                format(
+                String.format(
                         "CREATE TABLE orders_with_multi_pks ("
                                 + " id BIGINT NOT NULL,"
                                 + " seller_id STRING,"
@@ -371,6 +387,6 @@ public class OceanBaseSourceITCase extends OceanBaseSourceTestBase {
         List<String> realBinlog = fetchRows(iterator, expectedBinlog.length);
         assertEqualsInAnyOrder(Arrays.asList(expectedBinlog), realBinlog);
         Thread.sleep(3_000);
-        tableResult.getJobClient().get().cancel().get();
+        tableResult.getJobClient().orElseThrow().cancel().get();
     }
 }

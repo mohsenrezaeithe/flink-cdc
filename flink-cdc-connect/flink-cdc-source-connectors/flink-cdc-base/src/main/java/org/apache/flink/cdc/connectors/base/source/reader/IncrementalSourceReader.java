@@ -18,7 +18,6 @@
 package org.apache.flink.cdc.connectors.base.source.reader;
 
 import org.apache.flink.api.connector.source.SourceEvent;
-import org.apache.flink.cdc.common.annotation.Experimental;
 import org.apache.flink.cdc.common.annotation.VisibleForTesting;
 import org.apache.flink.cdc.connectors.base.config.SourceConfig;
 import org.apache.flink.cdc.connectors.base.dialect.DataSourceDialect;
@@ -74,7 +73,6 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * The multi-parallel source reader for table snapshot phase from {@link SnapshotSplit} and then
  * single-parallel source reader for table stream phase from {@link StreamSplit}.
  */
-@Experimental
 public class IncrementalSourceReader<T, C extends SourceConfig>
         extends SingleThreadMultiplexSourceReaderBase<
                 SourceRecords, T, SourceSplitBase, SourceSplitState> {

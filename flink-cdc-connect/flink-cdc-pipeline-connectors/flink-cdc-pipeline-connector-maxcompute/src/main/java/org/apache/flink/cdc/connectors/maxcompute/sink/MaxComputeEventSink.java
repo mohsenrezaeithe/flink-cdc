@@ -20,20 +20,19 @@ package org.apache.flink.cdc.connectors.maxcompute.sink;
 
 import org.apache.flink.api.connector.sink2.Sink;
 import org.apache.flink.api.connector.sink2.SinkWriter;
+import org.apache.flink.api.connector.sink2.WriterInitContext;
 import org.apache.flink.cdc.common.event.Event;
 import org.apache.flink.cdc.connectors.maxcompute.common.Constant;
 import org.apache.flink.cdc.connectors.maxcompute.coordinator.SessionManageCoordinatedOperatorFactory;
 import org.apache.flink.cdc.connectors.maxcompute.options.MaxComputeOptions;
 import org.apache.flink.cdc.connectors.maxcompute.options.MaxComputeWriteOptions;
 import org.apache.flink.cdc.runtime.typeutils.EventTypeInfo;
-import org.apache.flink.streaming.api.connector.sink2.WithPreWriteTopology;
+import org.apache.flink.streaming.api.connector.sink2.SupportsPreWriteTopology;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 
-import java.io.IOException;
-
 /** A {@link Sink} of {@link Event} to MaxCompute. */
-public class MaxComputeEventSink implements Sink<Event>, WithPreWriteTopology<Event> {
+public class MaxComputeEventSink implements Sink<Event>, SupportsPreWriteTopology<Event> {
     private static final long serialVersionUID = 1L;
     private final MaxComputeOptions options;
     private final MaxComputeWriteOptions writeOptions;
@@ -56,7 +55,7 @@ public class MaxComputeEventSink implements Sink<Event>, WithPreWriteTopology<Ev
     }
 
     @Override
-    public SinkWriter<Event> createWriter(InitContext context) throws IOException {
+    public SinkWriter<Event> createWriter(WriterInitContext context) {
         return new MaxComputeEventWriter(options, writeOptions, context);
     }
 }

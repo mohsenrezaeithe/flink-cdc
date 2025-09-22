@@ -27,6 +27,11 @@ limitations under the License.
 
     <artifactId>flink-cdc-pipeline-connector-starrocks</artifactId>
 
+    <properties>
+        <flink.version>1.20.1</flink.version>
+        <flink.major.version>1.20</flink.major.version>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>com.starrocks</groupId>
@@ -42,13 +47,11 @@ limitations under the License.
         <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>junit-jupiter</artifactId>
-            <version>${testcontainers.version}</version>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>jdbc</artifactId>
-            <version>${testcontainers.version}</version>
             <scope>test</scope>
         </dependency>
         <dependency>

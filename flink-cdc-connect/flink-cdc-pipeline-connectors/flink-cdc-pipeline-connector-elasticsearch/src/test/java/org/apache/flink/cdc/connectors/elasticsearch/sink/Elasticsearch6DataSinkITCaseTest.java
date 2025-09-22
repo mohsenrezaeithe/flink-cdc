@@ -19,7 +19,6 @@
 
 package org.apache.flink.cdc.connectors.elasticsearch.sink;
 
-import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.connector.sink2.Sink;
 import org.apache.flink.cdc.common.event.Event;
@@ -29,6 +28,8 @@ import org.apache.flink.cdc.connectors.elasticsearch.config.ElasticsearchSinkOpt
 import org.apache.flink.cdc.connectors.elasticsearch.sink.utils.ElasticsearchContainer;
 import org.apache.flink.cdc.connectors.elasticsearch.sink.utils.ElasticsearchTestUtils;
 import org.apache.flink.cdc.connectors.elasticsearch.v2.NetworkConfig;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.RestartStrategyOptions;
 import org.apache.flink.elasticsearch6.shaded.org.apache.http.HttpHost;
 import org.apache.flink.elasticsearch6.shaded.org.elasticsearch.action.get.GetRequest;
 import org.apache.flink.elasticsearch6.shaded.org.elasticsearch.action.get.GetResponse;
@@ -62,7 +63,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class Elasticsearch6DataSinkITCaseTest {
 
     private static final Logger LOG =
-            LoggerFactory.getLogger(ElasticsearchDataSinkITCaseTest.class);
+            LoggerFactory.getLogger(Elasticsearch6DataSinkITCaseTest.class);
     private static final String ELASTICSEARCH_VERSION = "6.8.20";
 
     @Container
@@ -155,15 +156,17 @@ class Elasticsearch6DataSinkITCaseTest {
 
     private void runJobWithEvents(List<Event> events) throws Exception {
         ElasticsearchSinkOptions options = createSinkOptions();
-        StreamExecutionEnvironment env = createStreamExecutionEnvironment();
-        ElasticsearchDataSink<Event> sink =
-                new ElasticsearchDataSink<>(options, ZoneId.systemDefault());
+        try (StreamExecutionEnvironment env = createStreamExecutionEnvironment()) {
+            ElasticsearchDataSink<Event> sink =
+                    new ElasticsearchDataSink<>(options, ZoneId.systemDefault());
 
-        DataStream<Event> stream = env.fromCollection(events, TypeInformation.of(Event.class));
-        Sink<Event> elasticsearchSink = ((FlinkSinkProvider) sink.getEventSinkProvider()).getSink();
-        stream.sinkTo(elasticsearchSink);
+            DataStream<Event> stream = env.fromData(events, TypeInformation.of(Event.class));
+            Sink<Event> elasticsearchSink =
+                    ((FlinkSinkProvider) sink.getEventSinkProvider()).getSink();
+            stream.sinkTo(elasticsearchSink);
 
-        env.execute("Elasticsearch Sink Test");
+            env.execute("Elasticsearch Sink Test");
+        }
     }
 
     private ElasticsearchSinkOptions createSinkOptions() {
@@ -185,10 +188,13 @@ class Elasticsearch6DataSinkITCaseTest {
     }
 
     private StreamExecutionEnvironment createStreamExecutionEnvironment() {
-        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        final Configuration conf = new Configuration();
+        conf.set(
+                RestartStrategyOptions.RESTART_STRATEGY,
+                RestartStrategyOptions.RestartStrategyType.NO_RESTART_STRATEGY.getMainValue());
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment(conf);
         env.setParallelism(1);
         env.enableCheckpointing(3000);
-        env.setRestartStrategy(RestartStrategies.noRestart());
         return env;
     }
 

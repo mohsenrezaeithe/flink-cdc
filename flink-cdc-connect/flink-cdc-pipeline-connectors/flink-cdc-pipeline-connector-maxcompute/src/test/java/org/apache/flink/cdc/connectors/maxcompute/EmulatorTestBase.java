@@ -33,9 +33,7 @@ import org.testcontainers.utility.DockerImageName;
 
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
-import java.net.InetAddress;
 import java.net.URL;
-import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
 
 /** Initialize MaxCompute Emulator for E2e test. */
@@ -69,17 +67,11 @@ public class EmulatorTestBase {
     public final Odps odpsInstance = MaxComputeUtils.getOdps(testOptions);
 
     private String getEndpoint() {
-        String ip;
-        if (MAXCOMPUTE_CONTAINER.getHost().equals("localhost")) {
-            try {
-                ip = InetAddress.getLocalHost().getHostAddress();
-            } catch (UnknownHostException e) {
-                ip = "127.0.0.1";
-            }
-        } else {
-            ip = MAXCOMPUTE_CONTAINER.getHost();
-        }
-        String endpoint = "http://" + ip + ":" + MAXCOMPUTE_CONTAINER.getFirstMappedPort();
+        String endpoint =
+                "http://"
+                        + MAXCOMPUTE_CONTAINER.getHost()
+                        + ":"
+                        + MAXCOMPUTE_CONTAINER.getFirstMappedPort();
         sendPOST(endpoint + "/init", endpoint);
         return endpoint;
     }

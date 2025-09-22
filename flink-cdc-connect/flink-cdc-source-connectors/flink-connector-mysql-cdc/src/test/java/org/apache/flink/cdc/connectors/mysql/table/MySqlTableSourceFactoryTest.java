@@ -17,6 +17,7 @@
 
 package org.apache.flink.cdc.connectors.mysql.table;
 
+import org.apache.flink.cdc.connectors.mysql.source.config.MySqlSourceOptions;
 import org.apache.flink.cdc.debezium.utils.ResolvedSchemaUtils;
 import org.apache.flink.configuration.ConfigOption;
 import org.apache.flink.configuration.Configuration;
@@ -43,21 +44,6 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
-
-import static org.apache.flink.cdc.connectors.mysql.source.config.MySqlSourceOptions.CHUNK_KEY_EVEN_DISTRIBUTION_FACTOR_LOWER_BOUND;
-import static org.apache.flink.cdc.connectors.mysql.source.config.MySqlSourceOptions.CHUNK_KEY_EVEN_DISTRIBUTION_FACTOR_UPPER_BOUND;
-import static org.apache.flink.cdc.connectors.mysql.source.config.MySqlSourceOptions.CHUNK_META_GROUP_SIZE;
-import static org.apache.flink.cdc.connectors.mysql.source.config.MySqlSourceOptions.CONNECTION_POOL_SIZE;
-import static org.apache.flink.cdc.connectors.mysql.source.config.MySqlSourceOptions.CONNECT_MAX_RETRIES;
-import static org.apache.flink.cdc.connectors.mysql.source.config.MySqlSourceOptions.CONNECT_TIMEOUT;
-import static org.apache.flink.cdc.connectors.mysql.source.config.MySqlSourceOptions.HEARTBEAT_INTERVAL;
-import static org.apache.flink.cdc.connectors.mysql.source.config.MySqlSourceOptions.PARSE_ONLINE_SCHEMA_CHANGES;
-import static org.apache.flink.cdc.connectors.mysql.source.config.MySqlSourceOptions.SCAN_INCREMENTAL_SNAPSHOT_BACKFILL_SKIP;
-import static org.apache.flink.cdc.connectors.mysql.source.config.MySqlSourceOptions.SCAN_INCREMENTAL_SNAPSHOT_CHUNK_SIZE;
-import static org.apache.flink.cdc.connectors.mysql.source.config.MySqlSourceOptions.SCAN_INCREMENTAL_SNAPSHOT_ENABLED;
-import static org.apache.flink.cdc.connectors.mysql.source.config.MySqlSourceOptions.SCAN_INCREMENTAL_SNAPSHOT_UNBOUNDED_CHUNK_FIRST;
-import static org.apache.flink.cdc.connectors.mysql.source.config.MySqlSourceOptions.SCAN_SNAPSHOT_FETCH_SIZE;
-import static org.apache.flink.cdc.connectors.mysql.source.config.MySqlSourceOptions.USE_LEGACY_JSON_FORMAT;
 
 /** Test for {@link MySqlTableSource} created by {@link MySqlTableSourceFactory}. */
 class MySqlTableSourceFactoryTest {
@@ -110,25 +96,27 @@ class MySqlTableSourceFactoryTest {
                         ZoneId.systemDefault(),
                         PROPERTIES,
                         null,
-                        false,
-                        SCAN_INCREMENTAL_SNAPSHOT_CHUNK_SIZE.defaultValue(),
-                        CHUNK_META_GROUP_SIZE.defaultValue(),
-                        SCAN_SNAPSHOT_FETCH_SIZE.defaultValue(),
-                        CONNECT_TIMEOUT.defaultValue(),
-                        CONNECT_MAX_RETRIES.defaultValue(),
-                        CONNECTION_POOL_SIZE.defaultValue(),
-                        CHUNK_KEY_EVEN_DISTRIBUTION_FACTOR_UPPER_BOUND.defaultValue(),
-                        CHUNK_KEY_EVEN_DISTRIBUTION_FACTOR_LOWER_BOUND.defaultValue(),
+                        MySqlSourceOptions.SCAN_INCREMENTAL_SNAPSHOT_CHUNK_SIZE.defaultValue(),
+                        MySqlSourceOptions.CHUNK_META_GROUP_SIZE.defaultValue(),
+                        MySqlSourceOptions.SCAN_SNAPSHOT_FETCH_SIZE.defaultValue(),
+                        MySqlSourceOptions.CONNECT_TIMEOUT.defaultValue(),
+                        MySqlSourceOptions.CONNECT_MAX_RETRIES.defaultValue(),
+                        MySqlSourceOptions.CONNECTION_POOL_SIZE.defaultValue(),
+                        MySqlSourceOptions.CHUNK_KEY_EVEN_DISTRIBUTION_FACTOR_UPPER_BOUND
+                                .defaultValue(),
+                        MySqlSourceOptions.CHUNK_KEY_EVEN_DISTRIBUTION_FACTOR_LOWER_BOUND
+                                .defaultValue(),
                         StartupOptions.initial(),
                         false,
                         false,
                         new Properties(),
-                        HEARTBEAT_INTERVAL.defaultValue(),
+                        MySqlSourceOptions.HEARTBEAT_INTERVAL.defaultValue(),
                         null,
-                        SCAN_INCREMENTAL_SNAPSHOT_BACKFILL_SKIP.defaultValue(),
-                        PARSE_ONLINE_SCHEMA_CHANGES.defaultValue(),
-                        USE_LEGACY_JSON_FORMAT.defaultValue(),
-                        SCAN_INCREMENTAL_SNAPSHOT_UNBOUNDED_CHUNK_FIRST.defaultValue(),
+                        MySqlSourceOptions.SCAN_INCREMENTAL_SNAPSHOT_BACKFILL_SKIP.defaultValue(),
+                        MySqlSourceOptions.PARSE_ONLINE_SCHEMA_CHANGES.defaultValue(),
+                        MySqlSourceOptions.USE_LEGACY_JSON_FORMAT.defaultValue(),
+                        MySqlSourceOptions.SCAN_INCREMENTAL_SNAPSHOT_UNBOUNDED_CHUNK_FIRST
+                                .defaultValue(),
                         false);
         Assertions.assertThat(actualSource).isEqualTo(expectedSource);
     }
@@ -160,25 +148,25 @@ class MySqlTableSourceFactoryTest {
                         ZoneId.systemDefault(),
                         PROPERTIES,
                         "123-126",
-                        true,
                         8000,
                         3000,
                         100,
                         Duration.ofSeconds(45),
-                        CONNECT_MAX_RETRIES.defaultValue(),
-                        CONNECTION_POOL_SIZE.defaultValue(),
+                        MySqlSourceOptions.CONNECT_MAX_RETRIES.defaultValue(),
+                        MySqlSourceOptions.CONNECTION_POOL_SIZE.defaultValue(),
                         40.5d,
                         0.01d,
                         StartupOptions.initial(),
                         false,
                         false,
                         new Properties(),
-                        HEARTBEAT_INTERVAL.defaultValue(),
+                        MySqlSourceOptions.HEARTBEAT_INTERVAL.defaultValue(),
                         "testCol",
-                        SCAN_INCREMENTAL_SNAPSHOT_BACKFILL_SKIP.defaultValue(),
-                        PARSE_ONLINE_SCHEMA_CHANGES.defaultValue(),
-                        USE_LEGACY_JSON_FORMAT.defaultValue(),
-                        SCAN_INCREMENTAL_SNAPSHOT_UNBOUNDED_CHUNK_FIRST.defaultValue(),
+                        MySqlSourceOptions.SCAN_INCREMENTAL_SNAPSHOT_BACKFILL_SKIP.defaultValue(),
+                        MySqlSourceOptions.PARSE_ONLINE_SCHEMA_CHANGES.defaultValue(),
+                        MySqlSourceOptions.USE_LEGACY_JSON_FORMAT.defaultValue(),
+                        MySqlSourceOptions.SCAN_INCREMENTAL_SNAPSHOT_UNBOUNDED_CHUNK_FIRST
+                                .defaultValue(),
                         false);
         Assertions.assertThat(actualSource).isEqualTo(expectedSource);
     }
@@ -206,25 +194,27 @@ class MySqlTableSourceFactoryTest {
                         ZoneId.systemDefault(),
                         PROPERTIES,
                         "123",
-                        true,
                         8000,
-                        CHUNK_META_GROUP_SIZE.defaultValue(),
+                        MySqlSourceOptions.CHUNK_META_GROUP_SIZE.defaultValue(),
                         100,
                         Duration.ofSeconds(45),
-                        CONNECT_MAX_RETRIES.defaultValue(),
-                        CONNECTION_POOL_SIZE.defaultValue(),
-                        CHUNK_KEY_EVEN_DISTRIBUTION_FACTOR_UPPER_BOUND.defaultValue(),
-                        CHUNK_KEY_EVEN_DISTRIBUTION_FACTOR_LOWER_BOUND.defaultValue(),
+                        MySqlSourceOptions.CONNECT_MAX_RETRIES.defaultValue(),
+                        MySqlSourceOptions.CONNECTION_POOL_SIZE.defaultValue(),
+                        MySqlSourceOptions.CHUNK_KEY_EVEN_DISTRIBUTION_FACTOR_UPPER_BOUND
+                                .defaultValue(),
+                        MySqlSourceOptions.CHUNK_KEY_EVEN_DISTRIBUTION_FACTOR_LOWER_BOUND
+                                .defaultValue(),
                         StartupOptions.initial(),
                         false,
                         false,
                         new Properties(),
-                        HEARTBEAT_INTERVAL.defaultValue(),
+                        MySqlSourceOptions.HEARTBEAT_INTERVAL.defaultValue(),
                         null,
-                        SCAN_INCREMENTAL_SNAPSHOT_BACKFILL_SKIP.defaultValue(),
-                        PARSE_ONLINE_SCHEMA_CHANGES.defaultValue(),
-                        USE_LEGACY_JSON_FORMAT.defaultValue(),
-                        SCAN_INCREMENTAL_SNAPSHOT_UNBOUNDED_CHUNK_FIRST.defaultValue(),
+                        MySqlSourceOptions.SCAN_INCREMENTAL_SNAPSHOT_BACKFILL_SKIP.defaultValue(),
+                        MySqlSourceOptions.PARSE_ONLINE_SCHEMA_CHANGES.defaultValue(),
+                        MySqlSourceOptions.USE_LEGACY_JSON_FORMAT.defaultValue(),
+                        MySqlSourceOptions.SCAN_INCREMENTAL_SNAPSHOT_UNBOUNDED_CHUNK_FIRST
+                                .defaultValue(),
                         false);
         Assertions.assertThat(actualSource).isEqualTo(expectedSource);
     }
@@ -250,25 +240,27 @@ class MySqlTableSourceFactoryTest {
                         ZoneId.systemDefault(),
                         PROPERTIES,
                         "123-126",
-                        SCAN_INCREMENTAL_SNAPSHOT_ENABLED.defaultValue(),
-                        SCAN_INCREMENTAL_SNAPSHOT_CHUNK_SIZE.defaultValue(),
-                        CHUNK_META_GROUP_SIZE.defaultValue(),
-                        SCAN_SNAPSHOT_FETCH_SIZE.defaultValue(),
-                        CONNECT_TIMEOUT.defaultValue(),
-                        CONNECT_MAX_RETRIES.defaultValue(),
-                        CONNECTION_POOL_SIZE.defaultValue(),
-                        CHUNK_KEY_EVEN_DISTRIBUTION_FACTOR_UPPER_BOUND.defaultValue(),
-                        CHUNK_KEY_EVEN_DISTRIBUTION_FACTOR_LOWER_BOUND.defaultValue(),
+                        MySqlSourceOptions.SCAN_INCREMENTAL_SNAPSHOT_CHUNK_SIZE.defaultValue(),
+                        MySqlSourceOptions.CHUNK_META_GROUP_SIZE.defaultValue(),
+                        MySqlSourceOptions.SCAN_SNAPSHOT_FETCH_SIZE.defaultValue(),
+                        MySqlSourceOptions.CONNECT_TIMEOUT.defaultValue(),
+                        MySqlSourceOptions.CONNECT_MAX_RETRIES.defaultValue(),
+                        MySqlSourceOptions.CONNECTION_POOL_SIZE.defaultValue(),
+                        MySqlSourceOptions.CHUNK_KEY_EVEN_DISTRIBUTION_FACTOR_UPPER_BOUND
+                                .defaultValue(),
+                        MySqlSourceOptions.CHUNK_KEY_EVEN_DISTRIBUTION_FACTOR_LOWER_BOUND
+                                .defaultValue(),
                         StartupOptions.latest(),
                         false,
                         false,
                         new Properties(),
-                        HEARTBEAT_INTERVAL.defaultValue(),
+                        MySqlSourceOptions.HEARTBEAT_INTERVAL.defaultValue(),
                         null,
-                        SCAN_INCREMENTAL_SNAPSHOT_BACKFILL_SKIP.defaultValue(),
-                        PARSE_ONLINE_SCHEMA_CHANGES.defaultValue(),
-                        USE_LEGACY_JSON_FORMAT.defaultValue(),
-                        SCAN_INCREMENTAL_SNAPSHOT_UNBOUNDED_CHUNK_FIRST.defaultValue(),
+                        MySqlSourceOptions.SCAN_INCREMENTAL_SNAPSHOT_BACKFILL_SKIP.defaultValue(),
+                        MySqlSourceOptions.PARSE_ONLINE_SCHEMA_CHANGES.defaultValue(),
+                        MySqlSourceOptions.USE_LEGACY_JSON_FORMAT.defaultValue(),
+                        MySqlSourceOptions.SCAN_INCREMENTAL_SNAPSHOT_UNBOUNDED_CHUNK_FIRST
+                                .defaultValue(),
                         false);
         Assertions.assertThat(actualSource).isEqualTo(expectedSource);
     }
@@ -311,15 +303,16 @@ class MySqlTableSourceFactoryTest {
                         ZoneId.of("Asia/Shanghai"),
                         dbzProperties,
                         "4321",
-                        false,
-                        SCAN_INCREMENTAL_SNAPSHOT_CHUNK_SIZE.defaultValue(),
-                        CHUNK_META_GROUP_SIZE.defaultValue(),
-                        SCAN_SNAPSHOT_FETCH_SIZE.defaultValue(),
-                        CONNECT_TIMEOUT.defaultValue(),
-                        CONNECT_MAX_RETRIES.defaultValue(),
-                        CONNECTION_POOL_SIZE.defaultValue(),
-                        CHUNK_KEY_EVEN_DISTRIBUTION_FACTOR_UPPER_BOUND.defaultValue(),
-                        CHUNK_KEY_EVEN_DISTRIBUTION_FACTOR_LOWER_BOUND.defaultValue(),
+                        MySqlSourceOptions.SCAN_INCREMENTAL_SNAPSHOT_CHUNK_SIZE.defaultValue(),
+                        MySqlSourceOptions.CHUNK_META_GROUP_SIZE.defaultValue(),
+                        MySqlSourceOptions.SCAN_SNAPSHOT_FETCH_SIZE.defaultValue(),
+                        MySqlSourceOptions.CONNECT_TIMEOUT.defaultValue(),
+                        MySqlSourceOptions.CONNECT_MAX_RETRIES.defaultValue(),
+                        MySqlSourceOptions.CONNECTION_POOL_SIZE.defaultValue(),
+                        MySqlSourceOptions.CHUNK_KEY_EVEN_DISTRIBUTION_FACTOR_UPPER_BOUND
+                                .defaultValue(),
+                        MySqlSourceOptions.CHUNK_KEY_EVEN_DISTRIBUTION_FACTOR_LOWER_BOUND
+                                .defaultValue(),
                         StartupOptions.initial(),
                         true,
                         true,
@@ -327,9 +320,10 @@ class MySqlTableSourceFactoryTest {
                         Duration.ofMillis(15213),
                         "testCol",
                         true,
-                        PARSE_ONLINE_SCHEMA_CHANGES.defaultValue(),
+                        MySqlSourceOptions.PARSE_ONLINE_SCHEMA_CHANGES.defaultValue(),
                         true,
-                        SCAN_INCREMENTAL_SNAPSHOT_UNBOUNDED_CHUNK_FIRST.defaultValue(),
+                        MySqlSourceOptions.SCAN_INCREMENTAL_SNAPSHOT_UNBOUNDED_CHUNK_FIRST
+                                .defaultValue(),
                         false);
         Assertions.assertThat(actualSource)
                 .isEqualTo(expectedSource)
@@ -370,25 +364,27 @@ class MySqlTableSourceFactoryTest {
                         ZoneId.systemDefault(),
                         PROPERTIES,
                         "4321",
-                        false,
-                        SCAN_INCREMENTAL_SNAPSHOT_CHUNK_SIZE.defaultValue(),
-                        CHUNK_META_GROUP_SIZE.defaultValue(),
-                        SCAN_SNAPSHOT_FETCH_SIZE.defaultValue(),
-                        CONNECT_TIMEOUT.defaultValue(),
-                        CONNECT_MAX_RETRIES.defaultValue(),
-                        CONNECTION_POOL_SIZE.defaultValue(),
-                        CHUNK_KEY_EVEN_DISTRIBUTION_FACTOR_UPPER_BOUND.defaultValue(),
-                        CHUNK_KEY_EVEN_DISTRIBUTION_FACTOR_LOWER_BOUND.defaultValue(),
+                        MySqlSourceOptions.SCAN_INCREMENTAL_SNAPSHOT_CHUNK_SIZE.defaultValue(),
+                        MySqlSourceOptions.CHUNK_META_GROUP_SIZE.defaultValue(),
+                        MySqlSourceOptions.SCAN_SNAPSHOT_FETCH_SIZE.defaultValue(),
+                        MySqlSourceOptions.CONNECT_TIMEOUT.defaultValue(),
+                        MySqlSourceOptions.CONNECT_MAX_RETRIES.defaultValue(),
+                        MySqlSourceOptions.CONNECTION_POOL_SIZE.defaultValue(),
+                        MySqlSourceOptions.CHUNK_KEY_EVEN_DISTRIBUTION_FACTOR_UPPER_BOUND
+                                .defaultValue(),
+                        MySqlSourceOptions.CHUNK_KEY_EVEN_DISTRIBUTION_FACTOR_LOWER_BOUND
+                                .defaultValue(),
                         StartupOptions.specificOffset(offsetFile, offsetPos),
                         false,
                         false,
                         new Properties(),
-                        HEARTBEAT_INTERVAL.defaultValue(),
+                        MySqlSourceOptions.HEARTBEAT_INTERVAL.defaultValue(),
                         null,
-                        SCAN_INCREMENTAL_SNAPSHOT_BACKFILL_SKIP.defaultValue(),
-                        PARSE_ONLINE_SCHEMA_CHANGES.defaultValue(),
-                        USE_LEGACY_JSON_FORMAT.defaultValue(),
-                        SCAN_INCREMENTAL_SNAPSHOT_UNBOUNDED_CHUNK_FIRST.defaultValue(),
+                        MySqlSourceOptions.SCAN_INCREMENTAL_SNAPSHOT_BACKFILL_SKIP.defaultValue(),
+                        MySqlSourceOptions.PARSE_ONLINE_SCHEMA_CHANGES.defaultValue(),
+                        MySqlSourceOptions.USE_LEGACY_JSON_FORMAT.defaultValue(),
+                        MySqlSourceOptions.SCAN_INCREMENTAL_SNAPSHOT_UNBOUNDED_CHUNK_FIRST
+                                .defaultValue(),
                         false);
         Assertions.assertThat(actualSource).isEqualTo(expectedSource);
     }
@@ -412,25 +408,27 @@ class MySqlTableSourceFactoryTest {
                         ZoneId.systemDefault(),
                         PROPERTIES,
                         null,
-                        false,
-                        SCAN_INCREMENTAL_SNAPSHOT_CHUNK_SIZE.defaultValue(),
-                        CHUNK_META_GROUP_SIZE.defaultValue(),
-                        SCAN_SNAPSHOT_FETCH_SIZE.defaultValue(),
-                        CONNECT_TIMEOUT.defaultValue(),
-                        CONNECT_MAX_RETRIES.defaultValue(),
-                        CONNECTION_POOL_SIZE.defaultValue(),
-                        CHUNK_KEY_EVEN_DISTRIBUTION_FACTOR_UPPER_BOUND.defaultValue(),
-                        CHUNK_KEY_EVEN_DISTRIBUTION_FACTOR_LOWER_BOUND.defaultValue(),
+                        MySqlSourceOptions.SCAN_INCREMENTAL_SNAPSHOT_CHUNK_SIZE.defaultValue(),
+                        MySqlSourceOptions.CHUNK_META_GROUP_SIZE.defaultValue(),
+                        MySqlSourceOptions.SCAN_SNAPSHOT_FETCH_SIZE.defaultValue(),
+                        MySqlSourceOptions.CONNECT_TIMEOUT.defaultValue(),
+                        MySqlSourceOptions.CONNECT_MAX_RETRIES.defaultValue(),
+                        MySqlSourceOptions.CONNECTION_POOL_SIZE.defaultValue(),
+                        MySqlSourceOptions.CHUNK_KEY_EVEN_DISTRIBUTION_FACTOR_UPPER_BOUND
+                                .defaultValue(),
+                        MySqlSourceOptions.CHUNK_KEY_EVEN_DISTRIBUTION_FACTOR_LOWER_BOUND
+                                .defaultValue(),
                         StartupOptions.initial(),
                         false,
                         false,
                         new Properties(),
-                        HEARTBEAT_INTERVAL.defaultValue(),
+                        MySqlSourceOptions.HEARTBEAT_INTERVAL.defaultValue(),
                         null,
-                        SCAN_INCREMENTAL_SNAPSHOT_BACKFILL_SKIP.defaultValue(),
-                        PARSE_ONLINE_SCHEMA_CHANGES.defaultValue(),
-                        USE_LEGACY_JSON_FORMAT.defaultValue(),
-                        SCAN_INCREMENTAL_SNAPSHOT_UNBOUNDED_CHUNK_FIRST.defaultValue(),
+                        MySqlSourceOptions.SCAN_INCREMENTAL_SNAPSHOT_BACKFILL_SKIP.defaultValue(),
+                        MySqlSourceOptions.PARSE_ONLINE_SCHEMA_CHANGES.defaultValue(),
+                        MySqlSourceOptions.USE_LEGACY_JSON_FORMAT.defaultValue(),
+                        MySqlSourceOptions.SCAN_INCREMENTAL_SNAPSHOT_UNBOUNDED_CHUNK_FIRST
+                                .defaultValue(),
                         false);
         Assertions.assertThat(actualSource).isEqualTo(expectedSource);
     }
@@ -455,25 +453,27 @@ class MySqlTableSourceFactoryTest {
                         ZoneId.systemDefault(),
                         PROPERTIES,
                         null,
-                        false,
-                        SCAN_INCREMENTAL_SNAPSHOT_CHUNK_SIZE.defaultValue(),
-                        CHUNK_META_GROUP_SIZE.defaultValue(),
-                        SCAN_SNAPSHOT_FETCH_SIZE.defaultValue(),
-                        CONNECT_TIMEOUT.defaultValue(),
-                        CONNECT_MAX_RETRIES.defaultValue(),
-                        CONNECTION_POOL_SIZE.defaultValue(),
-                        CHUNK_KEY_EVEN_DISTRIBUTION_FACTOR_UPPER_BOUND.defaultValue(),
-                        CHUNK_KEY_EVEN_DISTRIBUTION_FACTOR_LOWER_BOUND.defaultValue(),
+                        MySqlSourceOptions.SCAN_INCREMENTAL_SNAPSHOT_CHUNK_SIZE.defaultValue(),
+                        MySqlSourceOptions.CHUNK_META_GROUP_SIZE.defaultValue(),
+                        MySqlSourceOptions.SCAN_SNAPSHOT_FETCH_SIZE.defaultValue(),
+                        MySqlSourceOptions.CONNECT_TIMEOUT.defaultValue(),
+                        MySqlSourceOptions.CONNECT_MAX_RETRIES.defaultValue(),
+                        MySqlSourceOptions.CONNECTION_POOL_SIZE.defaultValue(),
+                        MySqlSourceOptions.CHUNK_KEY_EVEN_DISTRIBUTION_FACTOR_UPPER_BOUND
+                                .defaultValue(),
+                        MySqlSourceOptions.CHUNK_KEY_EVEN_DISTRIBUTION_FACTOR_LOWER_BOUND
+                                .defaultValue(),
                         StartupOptions.earliest(),
                         false,
                         false,
                         new Properties(),
-                        HEARTBEAT_INTERVAL.defaultValue(),
+                        MySqlSourceOptions.HEARTBEAT_INTERVAL.defaultValue(),
                         null,
-                        SCAN_INCREMENTAL_SNAPSHOT_BACKFILL_SKIP.defaultValue(),
-                        PARSE_ONLINE_SCHEMA_CHANGES.defaultValue(),
-                        USE_LEGACY_JSON_FORMAT.defaultValue(),
-                        SCAN_INCREMENTAL_SNAPSHOT_UNBOUNDED_CHUNK_FIRST.defaultValue(),
+                        MySqlSourceOptions.SCAN_INCREMENTAL_SNAPSHOT_BACKFILL_SKIP.defaultValue(),
+                        MySqlSourceOptions.PARSE_ONLINE_SCHEMA_CHANGES.defaultValue(),
+                        MySqlSourceOptions.USE_LEGACY_JSON_FORMAT.defaultValue(),
+                        MySqlSourceOptions.SCAN_INCREMENTAL_SNAPSHOT_UNBOUNDED_CHUNK_FIRST
+                                .defaultValue(),
                         false);
         Assertions.assertThat(actualSource).isEqualTo(expectedSource);
     }
@@ -499,25 +499,27 @@ class MySqlTableSourceFactoryTest {
                         ZoneId.systemDefault(),
                         PROPERTIES,
                         null,
-                        false,
-                        SCAN_INCREMENTAL_SNAPSHOT_CHUNK_SIZE.defaultValue(),
-                        CHUNK_META_GROUP_SIZE.defaultValue(),
-                        SCAN_SNAPSHOT_FETCH_SIZE.defaultValue(),
-                        CONNECT_TIMEOUT.defaultValue(),
-                        CONNECT_MAX_RETRIES.defaultValue(),
-                        CONNECTION_POOL_SIZE.defaultValue(),
-                        CHUNK_KEY_EVEN_DISTRIBUTION_FACTOR_UPPER_BOUND.defaultValue(),
-                        CHUNK_KEY_EVEN_DISTRIBUTION_FACTOR_LOWER_BOUND.defaultValue(),
+                        MySqlSourceOptions.SCAN_INCREMENTAL_SNAPSHOT_CHUNK_SIZE.defaultValue(),
+                        MySqlSourceOptions.CHUNK_META_GROUP_SIZE.defaultValue(),
+                        MySqlSourceOptions.SCAN_SNAPSHOT_FETCH_SIZE.defaultValue(),
+                        MySqlSourceOptions.CONNECT_TIMEOUT.defaultValue(),
+                        MySqlSourceOptions.CONNECT_MAX_RETRIES.defaultValue(),
+                        MySqlSourceOptions.CONNECTION_POOL_SIZE.defaultValue(),
+                        MySqlSourceOptions.CHUNK_KEY_EVEN_DISTRIBUTION_FACTOR_UPPER_BOUND
+                                .defaultValue(),
+                        MySqlSourceOptions.CHUNK_KEY_EVEN_DISTRIBUTION_FACTOR_LOWER_BOUND
+                                .defaultValue(),
                         StartupOptions.timestamp(0L),
                         false,
                         false,
                         new Properties(),
-                        HEARTBEAT_INTERVAL.defaultValue(),
+                        MySqlSourceOptions.HEARTBEAT_INTERVAL.defaultValue(),
                         null,
-                        SCAN_INCREMENTAL_SNAPSHOT_BACKFILL_SKIP.defaultValue(),
-                        PARSE_ONLINE_SCHEMA_CHANGES.defaultValue(),
-                        USE_LEGACY_JSON_FORMAT.defaultValue(),
-                        SCAN_INCREMENTAL_SNAPSHOT_UNBOUNDED_CHUNK_FIRST.defaultValue(),
+                        MySqlSourceOptions.SCAN_INCREMENTAL_SNAPSHOT_BACKFILL_SKIP.defaultValue(),
+                        MySqlSourceOptions.PARSE_ONLINE_SCHEMA_CHANGES.defaultValue(),
+                        MySqlSourceOptions.USE_LEGACY_JSON_FORMAT.defaultValue(),
+                        MySqlSourceOptions.SCAN_INCREMENTAL_SNAPSHOT_UNBOUNDED_CHUNK_FIRST
+                                .defaultValue(),
                         false);
         Assertions.assertThat(actualSource).isEqualTo(expectedSource);
     }
@@ -541,25 +543,27 @@ class MySqlTableSourceFactoryTest {
                         ZoneId.systemDefault(),
                         PROPERTIES,
                         null,
-                        false,
-                        SCAN_INCREMENTAL_SNAPSHOT_CHUNK_SIZE.defaultValue(),
-                        CHUNK_META_GROUP_SIZE.defaultValue(),
-                        SCAN_SNAPSHOT_FETCH_SIZE.defaultValue(),
-                        CONNECT_TIMEOUT.defaultValue(),
-                        CONNECT_MAX_RETRIES.defaultValue(),
-                        CONNECTION_POOL_SIZE.defaultValue(),
-                        CHUNK_KEY_EVEN_DISTRIBUTION_FACTOR_UPPER_BOUND.defaultValue(),
-                        CHUNK_KEY_EVEN_DISTRIBUTION_FACTOR_LOWER_BOUND.defaultValue(),
+                        MySqlSourceOptions.SCAN_INCREMENTAL_SNAPSHOT_CHUNK_SIZE.defaultValue(),
+                        MySqlSourceOptions.CHUNK_META_GROUP_SIZE.defaultValue(),
+                        MySqlSourceOptions.SCAN_SNAPSHOT_FETCH_SIZE.defaultValue(),
+                        MySqlSourceOptions.CONNECT_TIMEOUT.defaultValue(),
+                        MySqlSourceOptions.CONNECT_MAX_RETRIES.defaultValue(),
+                        MySqlSourceOptions.CONNECTION_POOL_SIZE.defaultValue(),
+                        MySqlSourceOptions.CHUNK_KEY_EVEN_DISTRIBUTION_FACTOR_UPPER_BOUND
+                                .defaultValue(),
+                        MySqlSourceOptions.CHUNK_KEY_EVEN_DISTRIBUTION_FACTOR_LOWER_BOUND
+                                .defaultValue(),
                         StartupOptions.latest(),
                         false,
                         false,
                         new Properties(),
-                        HEARTBEAT_INTERVAL.defaultValue(),
+                        MySqlSourceOptions.HEARTBEAT_INTERVAL.defaultValue(),
                         null,
-                        SCAN_INCREMENTAL_SNAPSHOT_BACKFILL_SKIP.defaultValue(),
-                        PARSE_ONLINE_SCHEMA_CHANGES.defaultValue(),
-                        USE_LEGACY_JSON_FORMAT.defaultValue(),
-                        SCAN_INCREMENTAL_SNAPSHOT_UNBOUNDED_CHUNK_FIRST.defaultValue(),
+                        MySqlSourceOptions.SCAN_INCREMENTAL_SNAPSHOT_BACKFILL_SKIP.defaultValue(),
+                        MySqlSourceOptions.PARSE_ONLINE_SCHEMA_CHANGES.defaultValue(),
+                        MySqlSourceOptions.USE_LEGACY_JSON_FORMAT.defaultValue(),
+                        MySqlSourceOptions.SCAN_INCREMENTAL_SNAPSHOT_UNBOUNDED_CHUNK_FIRST
+                                .defaultValue(),
                         false);
         Assertions.assertThat(actualSource).isEqualTo(expectedSource);
     }
@@ -588,25 +592,27 @@ class MySqlTableSourceFactoryTest {
                         ZoneId.systemDefault(),
                         PROPERTIES,
                         null,
-                        false,
-                        SCAN_INCREMENTAL_SNAPSHOT_CHUNK_SIZE.defaultValue(),
-                        CHUNK_META_GROUP_SIZE.defaultValue(),
-                        SCAN_SNAPSHOT_FETCH_SIZE.defaultValue(),
-                        CONNECT_TIMEOUT.defaultValue(),
-                        CONNECT_MAX_RETRIES.defaultValue(),
-                        CONNECTION_POOL_SIZE.defaultValue(),
-                        CHUNK_KEY_EVEN_DISTRIBUTION_FACTOR_UPPER_BOUND.defaultValue(),
-                        CHUNK_KEY_EVEN_DISTRIBUTION_FACTOR_LOWER_BOUND.defaultValue(),
+                        MySqlSourceOptions.SCAN_INCREMENTAL_SNAPSHOT_CHUNK_SIZE.defaultValue(),
+                        MySqlSourceOptions.CHUNK_META_GROUP_SIZE.defaultValue(),
+                        MySqlSourceOptions.SCAN_SNAPSHOT_FETCH_SIZE.defaultValue(),
+                        MySqlSourceOptions.CONNECT_TIMEOUT.defaultValue(),
+                        MySqlSourceOptions.CONNECT_MAX_RETRIES.defaultValue(),
+                        MySqlSourceOptions.CONNECTION_POOL_SIZE.defaultValue(),
+                        MySqlSourceOptions.CHUNK_KEY_EVEN_DISTRIBUTION_FACTOR_UPPER_BOUND
+                                .defaultValue(),
+                        MySqlSourceOptions.CHUNK_KEY_EVEN_DISTRIBUTION_FACTOR_LOWER_BOUND
+                                .defaultValue(),
                         StartupOptions.initial(),
                         false,
                         false,
                         new Properties(),
-                        HEARTBEAT_INTERVAL.defaultValue(),
+                        MySqlSourceOptions.HEARTBEAT_INTERVAL.defaultValue(),
                         null,
-                        SCAN_INCREMENTAL_SNAPSHOT_BACKFILL_SKIP.defaultValue(),
-                        PARSE_ONLINE_SCHEMA_CHANGES.defaultValue(),
-                        USE_LEGACY_JSON_FORMAT.defaultValue(),
-                        SCAN_INCREMENTAL_SNAPSHOT_UNBOUNDED_CHUNK_FIRST.defaultValue(),
+                        MySqlSourceOptions.SCAN_INCREMENTAL_SNAPSHOT_BACKFILL_SKIP.defaultValue(),
+                        MySqlSourceOptions.PARSE_ONLINE_SCHEMA_CHANGES.defaultValue(),
+                        MySqlSourceOptions.USE_LEGACY_JSON_FORMAT.defaultValue(),
+                        MySqlSourceOptions.SCAN_INCREMENTAL_SNAPSHOT_UNBOUNDED_CHUNK_FIRST
+                                .defaultValue(),
                         false);
         expectedSource.producedDataType = SCHEMA_WITH_METADATA.toSourceRowDataType();
         expectedSource.metadataKeys = Arrays.asList("op_ts", "database_name");
@@ -791,22 +797,23 @@ class MySqlTableSourceFactoryTest {
                         ZoneId.systemDefault(),
                         PROPERTIES,
                         null,
-                        false,
-                        SCAN_INCREMENTAL_SNAPSHOT_CHUNK_SIZE.defaultValue(),
-                        CHUNK_META_GROUP_SIZE.defaultValue(),
-                        SCAN_SNAPSHOT_FETCH_SIZE.defaultValue(),
-                        CONNECT_TIMEOUT.defaultValue(),
-                        CONNECT_MAX_RETRIES.defaultValue(),
-                        CONNECTION_POOL_SIZE.defaultValue(),
-                        CHUNK_KEY_EVEN_DISTRIBUTION_FACTOR_UPPER_BOUND.defaultValue(),
-                        CHUNK_KEY_EVEN_DISTRIBUTION_FACTOR_LOWER_BOUND.defaultValue(),
+                        MySqlSourceOptions.SCAN_INCREMENTAL_SNAPSHOT_CHUNK_SIZE.defaultValue(),
+                        MySqlSourceOptions.CHUNK_META_GROUP_SIZE.defaultValue(),
+                        MySqlSourceOptions.SCAN_SNAPSHOT_FETCH_SIZE.defaultValue(),
+                        MySqlSourceOptions.CONNECT_TIMEOUT.defaultValue(),
+                        MySqlSourceOptions.CONNECT_MAX_RETRIES.defaultValue(),
+                        MySqlSourceOptions.CONNECTION_POOL_SIZE.defaultValue(),
+                        MySqlSourceOptions.CHUNK_KEY_EVEN_DISTRIBUTION_FACTOR_UPPER_BOUND
+                                .defaultValue(),
+                        MySqlSourceOptions.CHUNK_KEY_EVEN_DISTRIBUTION_FACTOR_LOWER_BOUND
+                                .defaultValue(),
                         StartupOptions.initial(),
                         false,
                         false,
                         new Properties(),
-                        HEARTBEAT_INTERVAL.defaultValue(),
+                        MySqlSourceOptions.HEARTBEAT_INTERVAL.defaultValue(),
                         null,
-                        SCAN_INCREMENTAL_SNAPSHOT_BACKFILL_SKIP.defaultValue(),
+                        MySqlSourceOptions.SCAN_INCREMENTAL_SNAPSHOT_BACKFILL_SKIP.defaultValue(),
                         true,
                         true,
                         true,
@@ -828,16 +835,18 @@ class MySqlTableSourceFactoryTest {
 
     private static DynamicTableSource createTableSource(
             ResolvedSchema schema, Map<String, String> options) {
-        return FactoryUtil.createTableSource(
+        return FactoryUtil.createDynamicTableSource(
                 null,
                 ObjectIdentifier.of("default", "default", "t1"),
                 new ResolvedCatalogTable(
-                        CatalogTable.of(
-                                Schema.newBuilder().fromResolvedSchema(schema).build(),
-                                "mock source",
-                                new ArrayList<>(),
-                                options),
+                        CatalogTable.newBuilder()
+                                .schema(Schema.newBuilder().fromResolvedSchema(schema).build())
+                                .comment("mock source")
+                                .partitionKeys(new ArrayList<>())
+                                .options(options)
+                                .build(),
                         schema),
+                new HashMap<>(),
                 new Configuration(),
                 MySqlTableSourceFactoryTest.class.getClassLoader(),
                 false);

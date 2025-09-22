@@ -17,8 +17,9 @@
 
 package org.apache.flink.cdc.connectors.mongodb.source;
 
+import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
-import org.apache.flink.cdc.connectors.mongodb.MongoDBSource;
+import org.apache.flink.cdc.connectors.mongodb.utils.MongoDBContainer;
 import org.apache.flink.cdc.debezium.JsonDebeziumDeserializationSchema;
 import org.apache.flink.core.execution.JobClient;
 import org.apache.flink.metrics.Gauge;
@@ -29,21 +30,29 @@ import org.apache.flink.runtime.metrics.groups.InternalSourceReaderMetricGroup;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.DataStreamSource;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.streaming.api.functions.source.SourceFunction;
 import org.apache.flink.streaming.api.operators.collect.CollectResultIterator;
 import org.apache.flink.streaming.api.operators.collect.CollectSinkOperator;
 import org.apache.flink.streaming.api.operators.collect.CollectSinkOperatorFactory;
 import org.apache.flink.streaming.api.operators.collect.CollectStreamSink;
+import org.apache.flink.util.Preconditions;
 
+import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Updates;
+import org.assertj.core.api.Assertions;
 import org.bson.Document;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.testcontainers.containers.output.Slf4jLogConsumer;
+import org.testcontainers.lifecycle.Startables;
 
 import java.time.Duration;
 import java.util.Arrays;
@@ -52,16 +61,49 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
-
-import static org.apache.flink.cdc.connectors.mongodb.utils.MongoDBContainer.FLINK_USER;
-import static org.apache.flink.cdc.connectors.mongodb.utils.MongoDBContainer.FLINK_USER_PASSWORD;
-import static org.apache.flink.util.Preconditions.checkState;
-import static org.assertj.core.api.Assertions.assertThat;
+import java.util.stream.Stream;
 
 /** IT tests for {@link MongoDBSource}. */
 @Timeout(value = 300, unit = TimeUnit.SECONDS)
 class MongoDBMetricsITCase extends MongoDBSourceTestBase {
+
     private static final Logger LOG = LoggerFactory.getLogger(MongoDBMetricsITCase.class);
+
+    protected MongoClient mongodbClient;
+
+    private static final MongoDBContainer MONGO_CONTAINER =
+            new MongoDBContainer("mongo:" + getMongoVersion())
+                    .withSharding()
+                    .withLogConsumer(new Slf4jLogConsumer(LOG));
+
+    @BeforeAll
+    static void startContainers() {
+        LOG.info("Starting containers...");
+        Startables.deepStart(Stream.of(MONGO_CONTAINER)).join();
+        LOG.info("Containers are started.");
+    }
+
+    @AfterAll
+    static void stopContainers() {
+        LOG.info("Stopping containers...");
+        if (MONGO_CONTAINER != null) {
+            MONGO_CONTAINER.stop();
+        }
+        LOG.info("Containers are stopped.");
+    }
+
+    @BeforeEach
+    public void testSetup() {
+        mongodbClient = this.createClients(MONGO_CONTAINER);
+    }
+
+    @AfterEach
+    public void testDestroy() {
+        if (mongodbClient != null) {
+            mongodbClient.close();
+            mongodbClient = null;
+        }
+    }
 
     public static final Duration TIMEOUT = Duration.ofSeconds(300);
 
@@ -71,24 +113,26 @@ class MongoDBMetricsITCase extends MongoDBSourceTestBase {
         String customerDatabase = MONGO_CONTAINER.executeCommandFileInSeparateDatabase("customer");
         env.setParallelism(1);
         env.enableCheckpointing(200L);
-        SourceFunction<String> sourceFunction =
+        MongoDBSource<String> source =
                 MongoDBSource.<String>builder()
                         .hosts(MONGO_CONTAINER.getHostAndPort())
-                        .username(FLINK_USER)
-                        .password(FLINK_USER_PASSWORD)
+                        .username(MongoDBContainer.FLINK_USER)
+                        .password(MongoDBContainer.FLINK_USER_PASSWORD)
                         .databaseList(customerDatabase)
                         .collectionList(
                                 getCollectionNameRegex(
                                         customerDatabase, new String[] {"customers"}))
                         .deserializer(new JsonDebeziumDeserializationSchema())
                         .build();
-        DataStreamSource<String> stream = env.addSource(sourceFunction, "MongoDB CDC Source");
+        DataStreamSource<String> stream =
+                env.fromSource(
+                        source, WatermarkStrategy.noWatermarks(), "MongoDB Incremental CDC Source");
         CollectResultIterator<String> iterator = addCollector(env, stream);
         JobClient jobClient = env.executeAsync();
         iterator.setJobClient(jobClient);
 
-        //        // ---------------------------- Snapshot phase ------------------------------
-        //        // Wait until we receive all 21 snapshot records
+        // ---------------------------- Snapshot phase ------------------------------
+        // Wait until we receive all 21 snapshot records
         int numSnapshotRecordsExpected = 21;
         int numSnapshotRecordsReceived = 0;
 
@@ -106,25 +150,27 @@ class MongoDBMetricsITCase extends MongoDBSourceTestBase {
         Map<String, Metric> metrics = metricReporter.getMetricsByGroup(group);
 
         // numRecordsOut
-        assertThat(group.getIOMetricGroup().getNumRecordsOutCounter().getCount())
+        Assertions.assertThat(group.getIOMetricGroup().getNumRecordsOutCounter().getCount())
                 .isEqualTo(numSnapshotRecordsExpected);
 
         // currentEmitEventTimeLag should be UNDEFINED during snapshot phase
-        assertThat(metrics).containsKey(MetricNames.CURRENT_EMIT_EVENT_TIME_LAG);
+        Assertions.assertThat(metrics).containsKey(MetricNames.CURRENT_EMIT_EVENT_TIME_LAG);
         Gauge<Long> currentEmitEventTimeLag =
                 (Gauge<Long>) metrics.get(MetricNames.CURRENT_EMIT_EVENT_TIME_LAG);
-        assertThat(currentEmitEventTimeLag.getValue())
+        Assertions.assertThat(currentEmitEventTimeLag.getValue())
                 .isEqualTo(InternalSourceReaderMetricGroup.UNDEFINED);
         // currentFetchEventTimeLag should be UNDEFINED during snapshot phase
-        assertThat(metrics).containsKey(MetricNames.CURRENT_FETCH_EVENT_TIME_LAG);
+        Assertions.assertThat(metrics).containsKey(MetricNames.CURRENT_FETCH_EVENT_TIME_LAG);
         Gauge<Long> currentFetchEventTimeLag =
                 (Gauge<Long>) metrics.get(MetricNames.CURRENT_FETCH_EVENT_TIME_LAG);
-        assertThat(currentFetchEventTimeLag.getValue())
+        Assertions.assertThat(currentFetchEventTimeLag.getValue())
                 .isEqualTo(InternalSourceReaderMetricGroup.UNDEFINED);
         // sourceIdleTime should be positive (we can't know the exact value)
-        assertThat(metrics).containsKey(MetricNames.SOURCE_IDLE_TIME);
+        Assertions.assertThat(metrics).containsKey(MetricNames.SOURCE_IDLE_TIME);
         Gauge<Long> sourceIdleTime = (Gauge<Long>) metrics.get(MetricNames.SOURCE_IDLE_TIME);
-        assertThat(sourceIdleTime.getValue()).isGreaterThan(0).isLessThan(TIMEOUT.toMillis());
+        Assertions.assertThat(sourceIdleTime.getValue())
+                .isGreaterThan(0)
+                .isLessThan(TIMEOUT.toMillis());
 
         // --------------------------------- Binlog phase -----------------------------
         makeFirstPartChangeStreamEvents(mongodbClient.getDatabase(customerDatabase), "customers");
@@ -138,21 +184,23 @@ class MongoDBMetricsITCase extends MongoDBSourceTestBase {
 
         // Check metrics
         // numRecordsOut
-        assertThat(group.getIOMetricGroup().getNumRecordsOutCounter().getCount())
+        Assertions.assertThat(group.getIOMetricGroup().getNumRecordsOutCounter().getCount())
                 .isEqualTo(numSnapshotRecordsExpected + numBinlogRecordsExpected);
 
         // currentEmitEventTimeLag should be reasonably positive (we can't know the exact value)
-        assertThat(currentEmitEventTimeLag.getValue())
+        Assertions.assertThat(currentEmitEventTimeLag.getValue())
                 .isGreaterThan(0)
                 .isLessThan(TIMEOUT.toMillis());
 
         // currentEmitEventTimeLag should be reasonably positive (we can't know the exact value)
-        assertThat(currentFetchEventTimeLag.getValue())
+        Assertions.assertThat(currentFetchEventTimeLag.getValue())
                 .isGreaterThan(0)
                 .isLessThan(TIMEOUT.toMillis());
 
         // currentEmitEventTimeLag should be reasonably positive (we can't know the exact value)
-        assertThat(sourceIdleTime.getValue()).isGreaterThan(0).isLessThan(TIMEOUT.toMillis());
+        Assertions.assertThat(sourceIdleTime.getValue())
+                .isGreaterThan(0)
+                .isLessThan(TIMEOUT.toMillis());
 
         jobClient.cancel().get();
         iterator.close();
@@ -161,14 +209,16 @@ class MongoDBMetricsITCase extends MongoDBSourceTestBase {
     private <T> CollectResultIterator<T> addCollector(
             StreamExecutionEnvironment env, DataStream<T> stream) {
         TypeSerializer<T> serializer =
-                stream.getTransformation().getOutputType().createSerializer(env.getConfig()); //
+                stream.getTransformation()
+                        .getOutputType()
+                        .createSerializer(env.getConfig().getSerializerConfig()); //
         String accumulatorName = "dataStreamCollect_" + UUID.randomUUID();
         CollectSinkOperatorFactory<T> factory =
                 new CollectSinkOperatorFactory<>(serializer, accumulatorName);
         CollectSinkOperator<T> operator = (CollectSinkOperator<T>) factory.getOperator();
         CollectResultIterator<T> iterator =
                 new CollectResultIterator<>(
-                        operator.getOperatorIdFuture(),
+                        operator.getOperatorID().toString(),
                         serializer,
                         accumulatorName,
                         env.getCheckpointConfig(),
@@ -197,7 +247,7 @@ class MongoDBMetricsITCase extends MongoDBSourceTestBase {
     }
 
     private String getCollectionNameRegex(String database, String[] captureCustomerCollections) {
-        checkState(captureCustomerCollections.length > 0);
+        Preconditions.checkState(captureCustomerCollections.length > 0);
         if (captureCustomerCollections.length == 1) {
             return database + "." + captureCustomerCollections[0];
         } else {

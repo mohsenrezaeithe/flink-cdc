@@ -17,7 +17,6 @@
 
 package org.apache.flink.cdc.connectors.iceberg.sink.v2;
 
-import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.connector.sink2.Sink;
 import org.apache.flink.cdc.common.data.binary.BinaryStringData;
@@ -32,6 +31,7 @@ import org.apache.flink.cdc.common.types.RowType;
 import org.apache.flink.cdc.connectors.iceberg.sink.IcebergMetadataApplier;
 import org.apache.flink.cdc.connectors.iceberg.sink.v2.compaction.CompactionOptions;
 import org.apache.flink.cdc.runtime.typeutils.BinaryRecordDataGenerator;
+import org.apache.flink.configuration.RestartStrategyOptions;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 
@@ -50,6 +50,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -77,10 +78,14 @@ public class IcebergSinkITCase {
 
     @BeforeAll
     public static void before() {
-        env = StreamExecutionEnvironment.getExecutionEnvironment();
+        final org.apache.flink.configuration.Configuration conf =
+                new org.apache.flink.configuration.Configuration();
+        conf.set(
+                RestartStrategyOptions.RESTART_STRATEGY,
+                RestartStrategyOptions.RestartStrategyType.NO_RESTART_STRATEGY.getMainValue());
+        env = StreamExecutionEnvironment.getExecutionEnvironment(conf);
         env.setParallelism(DEFAULT_PARALLELISM);
         env.enableCheckpointing(1000);
-        env.setRestartStrategy(RestartStrategies.noRestart());
         String warehouse =
                 new File(temporaryFolder.toFile(), UUID.randomUUID().toString()).toString();
         catalogOptions.put("type", "hadoop");
@@ -136,8 +141,10 @@ public class IcebergSinkITCase {
                         .column(new PhysicalColumn("name", DataTypes.VARCHAR(17), null))
                         .primaryKey("id")
                         .build();
-        IcebergMetadataApplier icebergMetadataApplier = new IcebergMetadataApplier(catalogOptions);
-        icebergMetadataApplier.applySchemaChange(new CreateTableEvent(tableId, schema));
+        try (IcebergMetadataApplier icebergMetadataApplier =
+                new IcebergMetadataApplier(catalogOptions)) {
+            icebergMetadataApplier.applySchemaChange(new CreateTableEvent(tableId, schema));
+        }
         BinaryRecordDataGenerator generator =
                 new BinaryRecordDataGenerator(
                         RowType.of(DataTypes.INT(), DataTypes.DOUBLE(), DataTypes.VARCHAR(17)));
@@ -174,21 +181,23 @@ public class IcebergSinkITCase {
                                 })));
     }
 
-    private List<String> fetchTableContent(Catalog catalog, TableId tableId) {
+    private List<String> fetchTableContent(Catalog catalog, TableId tableId) throws IOException {
         List<String> results = new ArrayList<>();
         Table table =
                 catalog.loadTable(
                         TableIdentifier.of(tableId.getSchemaName(), tableId.getTableName()));
         org.apache.iceberg.Schema schema = table.schema();
-        CloseableIterable<Record> records = IcebergGenerics.read(table).project(schema).build();
-        for (Record record : records) {
-            List<String> fieldValues = new ArrayList<>();
-            for (Types.NestedField field : schema.columns()) {
-                String fieldValue = Objects.toString(record.getField(field.name()), "null");
-                fieldValues.add(fieldValue);
+        try (CloseableIterable<Record> records =
+                IcebergGenerics.read(table).project(schema).build()) {
+            for (Record record : records) {
+                List<String> fieldValues = new ArrayList<>();
+                for (Types.NestedField field : schema.columns()) {
+                    String fieldValue = Objects.toString(record.getField(field.name()), "null");
+                    fieldValues.add(fieldValue);
+                }
+                String joinedString = String.join(", ", fieldValues);
+                results.add(joinedString);
             }
-            String joinedString = String.join(", ", fieldValues);
-            results.add(joinedString);
         }
         return results;
     }

@@ -18,7 +18,6 @@
 package org.apache.flink.cdc.connectors.mysql.source;
 
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
-import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.cdc.common.data.RecordData;
 import org.apache.flink.cdc.common.event.CreateTableEvent;
@@ -35,6 +34,8 @@ import org.apache.flink.cdc.connectors.mysql.testutils.MySqSourceTestUtils;
 import org.apache.flink.cdc.connectors.mysql.testutils.MySqlContainer;
 import org.apache.flink.cdc.connectors.mysql.testutils.MySqlVersion;
 import org.apache.flink.cdc.connectors.mysql.testutils.UniqueDatabase;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.RestartStrategyOptions;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.util.CloseableIterator;
 
@@ -73,8 +74,15 @@ public class MySqlAncientDateAndTimeITCase extends MySqlSourceTestBase {
     private final UniqueDatabase ancientDatabase =
             new UniqueDatabase(MYSQL_CONTAINER, "ancient_date_and_time", TEST_USER, TEST_PASSWORD);
 
-    private final StreamExecutionEnvironment env =
-            StreamExecutionEnvironment.getExecutionEnvironment();
+    private final StreamExecutionEnvironment env;
+
+    {
+        final Configuration conf = new Configuration();
+        conf.set(
+                RestartStrategyOptions.RESTART_STRATEGY,
+                RestartStrategyOptions.RestartStrategyType.NO_RESTART_STRATEGY.getMainValue());
+        env = StreamExecutionEnvironment.getExecutionEnvironment(conf);
+    }
 
     @BeforeAll
     public static void beforeClass() {
@@ -94,7 +102,6 @@ public class MySqlAncientDateAndTimeITCase extends MySqlSourceTestBase {
     public void before() {
         env.setParallelism(DEFAULT_PARALLELISM);
         env.enableCheckpointing(200);
-        env.setRestartStrategy(RestartStrategies.noRestart());
         ancientDatabase.createAndInitialize();
     }
 

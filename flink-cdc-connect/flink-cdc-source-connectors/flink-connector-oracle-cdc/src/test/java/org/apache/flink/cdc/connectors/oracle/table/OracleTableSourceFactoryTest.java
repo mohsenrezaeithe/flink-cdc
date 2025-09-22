@@ -101,7 +101,6 @@ class OracleTableSourceFactoryTest {
                         MY_PASSWORD,
                         PROPERTIES,
                         StartupOptions.initial(),
-                        SourceOptions.SCAN_INCREMENTAL_SNAPSHOT_ENABLED.defaultValue(),
                         SourceOptions.SCAN_INCREMENTAL_SNAPSHOT_CHUNK_SIZE.defaultValue(),
                         SourceOptions.CHUNK_META_GROUP_SIZE.defaultValue(),
                         SourceOptions.SCAN_SNAPSHOT_FETCH_SIZE.defaultValue(),
@@ -140,7 +139,6 @@ class OracleTableSourceFactoryTest {
                         MY_PASSWORD,
                         PROPERTIES,
                         StartupOptions.initial(),
-                        SourceOptions.SCAN_INCREMENTAL_SNAPSHOT_ENABLED.defaultValue(),
                         SourceOptions.SCAN_INCREMENTAL_SNAPSHOT_CHUNK_SIZE.defaultValue(),
                         SourceOptions.CHUNK_META_GROUP_SIZE.defaultValue(),
                         SourceOptions.SCAN_SNAPSHOT_FETCH_SIZE.defaultValue(),
@@ -184,7 +182,6 @@ class OracleTableSourceFactoryTest {
                         MY_PASSWORD,
                         dbzProperties,
                         StartupOptions.initial(),
-                        SourceOptions.SCAN_INCREMENTAL_SNAPSHOT_ENABLED.defaultValue(),
                         SourceOptions.SCAN_INCREMENTAL_SNAPSHOT_CHUNK_SIZE.defaultValue(),
                         SourceOptions.CHUNK_META_GROUP_SIZE.defaultValue(),
                         SourceOptions.SCAN_SNAPSHOT_FETCH_SIZE.defaultValue(),
@@ -259,7 +256,6 @@ class OracleTableSourceFactoryTest {
                         MY_PASSWORD,
                         dbzProperties,
                         StartupOptions.initial(),
-                        SourceOptions.SCAN_INCREMENTAL_SNAPSHOT_ENABLED.defaultValue(),
                         chunkSize,
                         splitMetaGroupSize,
                         fetchSize,
@@ -296,7 +292,6 @@ class OracleTableSourceFactoryTest {
                         MY_PASSWORD,
                         PROPERTIES,
                         StartupOptions.initial(),
-                        SourceOptions.SCAN_INCREMENTAL_SNAPSHOT_ENABLED.defaultValue(),
                         SourceOptions.SCAN_INCREMENTAL_SNAPSHOT_CHUNK_SIZE.defaultValue(),
                         SourceOptions.CHUNK_META_GROUP_SIZE.defaultValue(),
                         SourceOptions.SCAN_SNAPSHOT_FETCH_SIZE.defaultValue(),
@@ -336,7 +331,6 @@ class OracleTableSourceFactoryTest {
                         MY_PASSWORD,
                         PROPERTIES,
                         StartupOptions.latest(),
-                        SourceOptions.SCAN_INCREMENTAL_SNAPSHOT_ENABLED.defaultValue(),
                         SourceOptions.SCAN_INCREMENTAL_SNAPSHOT_CHUNK_SIZE.defaultValue(),
                         SourceOptions.CHUNK_META_GROUP_SIZE.defaultValue(),
                         SourceOptions.SCAN_SNAPSHOT_FETCH_SIZE.defaultValue(),
@@ -380,7 +374,6 @@ class OracleTableSourceFactoryTest {
                         MY_PASSWORD,
                         new Properties(),
                         StartupOptions.initial(),
-                        SourceOptions.SCAN_INCREMENTAL_SNAPSHOT_ENABLED.defaultValue(),
                         SourceOptions.SCAN_INCREMENTAL_SNAPSHOT_CHUNK_SIZE.defaultValue(),
                         SourceOptions.CHUNK_META_GROUP_SIZE.defaultValue(),
                         SourceOptions.SCAN_SNAPSHOT_FETCH_SIZE.defaultValue(),
@@ -473,16 +466,18 @@ class OracleTableSourceFactoryTest {
 
     private static DynamicTableSource createTableSource(
             ResolvedSchema schema, Map<String, String> options) {
-        return FactoryUtil.createTableSource(
+        return FactoryUtil.createDynamicTableSource(
                 null,
                 ObjectIdentifier.of("default", "default", "t1"),
                 new ResolvedCatalogTable(
-                        CatalogTable.of(
-                                Schema.newBuilder().fromResolvedSchema(schema).build(),
-                                "mock source",
-                                new ArrayList<>(),
-                                options),
+                        CatalogTable.newBuilder()
+                                .schema(Schema.newBuilder().fromResolvedSchema(schema).build())
+                                .comment("mock source")
+                                .partitionKeys(new ArrayList<>())
+                                .options(options)
+                                .build(),
                         schema),
+                new HashMap<>(),
                 new Configuration(),
                 OracleTableSourceFactoryTest.class.getClassLoader(),
                 false);

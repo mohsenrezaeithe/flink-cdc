@@ -17,7 +17,6 @@
 
 package org.apache.flink.cdc.connectors.mysql.source;
 
-import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.cdc.common.event.TableId;
 import org.apache.flink.cdc.common.schema.Schema;
 import org.apache.flink.cdc.common.types.DataType;
@@ -30,8 +29,11 @@ import org.apache.flink.cdc.connectors.mysql.testutils.MySqSourceTestUtils;
 import org.apache.flink.cdc.connectors.mysql.testutils.MySqlContainer;
 import org.apache.flink.cdc.connectors.mysql.testutils.MySqlVersion;
 import org.apache.flink.cdc.connectors.mysql.testutils.UniqueDatabase;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.RestartStrategyOptions;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 
+import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -43,9 +45,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** IT cases for {@link MySqlMetadataAccessor}. */
 class MySqlMetadataAccessorITCase extends MySqlSourceTestBase {
@@ -67,8 +66,15 @@ class MySqlMetadataAccessorITCase extends MySqlSourceTestBase {
                     MySqSourceTestUtils.TEST_USER,
                     MySqSourceTestUtils.TEST_PASSWORD);
 
-    private final StreamExecutionEnvironment env =
-            StreamExecutionEnvironment.getExecutionEnvironment();
+    private final StreamExecutionEnvironment env;
+
+    {
+        final Configuration conf = new Configuration();
+        conf.set(
+                RestartStrategyOptions.RESTART_STRATEGY,
+                RestartStrategyOptions.RestartStrategyType.NO_RESTART_STRATEGY.getMainValue());
+        env = StreamExecutionEnvironment.getExecutionEnvironment(conf);
+    }
 
     @BeforeAll
     public static void beforeClass() {
@@ -88,7 +94,6 @@ class MySqlMetadataAccessorITCase extends MySqlSourceTestBase {
     public void before() {
         env.setParallelism(DEFAULT_PARALLELISM);
         env.enableCheckpointing(200);
-        env.setRestartStrategy(RestartStrategies.noRestart());
     }
 
     @Test
@@ -164,7 +169,7 @@ class MySqlMetadataAccessorITCase extends MySqlSourceTestBase {
                                             "timestamp_def_c"
                                         }))
                         .build();
-        assertThat(actualSchema).isEqualTo(expectedSchema);
+        Assertions.assertThat(actualSchema).isEqualTo(expectedSchema);
     }
 
     @Test
@@ -214,7 +219,7 @@ class MySqlMetadataAccessorITCase extends MySqlSourceTestBase {
                                             "timestamp_def_c"
                                         }))
                         .build();
-        assertThat(actualSchema).isEqualTo(expectedSchema);
+        Assertions.assertThat(actualSchema).isEqualTo(expectedSchema);
     }
 
     @Test
@@ -291,7 +296,7 @@ class MySqlMetadataAccessorITCase extends MySqlSourceTestBase {
                                             "double_precision_c2"
                                         }))
                         .build();
-        assertThat(actualSchema).isEqualTo(expectedSchema);
+        Assertions.assertThat(actualSchema).isEqualTo(expectedSchema);
     }
 
     @Test
@@ -367,7 +372,7 @@ class MySqlMetadataAccessorITCase extends MySqlSourceTestBase {
                                             "double_precision_c2"
                                         }))
                         .build();
-        assertThat(actualSchema).isEqualTo(expectedSchema);
+        Assertions.assertThat(actualSchema).isEqualTo(expectedSchema);
     }
 
     private void testAccessDatabaseAndTable(UniqueDatabase database) {
@@ -377,18 +382,18 @@ class MySqlMetadataAccessorITCase extends MySqlSourceTestBase {
                 new String[] {"common_types", "time_types", "precision_types", "json_types"};
         MySqlMetadataAccessor metadataAccessor = getMetadataAccessor(tables, database, true);
 
-        assertThatThrownBy(metadataAccessor::listNamespaces)
+        Assertions.assertThatThrownBy(metadataAccessor::listNamespaces)
                 .isInstanceOf(UnsupportedOperationException.class);
 
         List<String> schemas = metadataAccessor.listSchemas(null);
-        assertThat(schemas).contains(database.getDatabaseName());
+        Assertions.assertThat(schemas).contains(database.getDatabaseName());
 
         List<TableId> actualTables = metadataAccessor.listTables(null, database.getDatabaseName());
         List<TableId> expectedTables =
                 Arrays.stream(tables)
                         .map(table -> TableId.tableId(database.getDatabaseName(), table))
                         .collect(Collectors.toList());
-        assertThat(actualTables).containsExactlyInAnyOrderElementsOf(expectedTables);
+        Assertions.assertThat(actualTables).containsExactlyInAnyOrderElementsOf(expectedTables);
     }
 
     private void testAccessCommonTypesSchema(UniqueDatabase database, boolean tinyint1IsBit) {
@@ -529,7 +534,7 @@ class MySqlMetadataAccessorITCase extends MySqlSourceTestBase {
                                             "varchar_len0_c"
                                         }))
                         .build();
-        assertThat(actualSchema).isEqualTo(expectedSchema);
+        Assertions.assertThat(actualSchema).isEqualTo(expectedSchema);
     }
 
     private MySqlMetadataAccessor getMetadataAccessor(
@@ -565,7 +570,7 @@ class MySqlMetadataAccessorITCase extends MySqlSourceTestBase {
                                             "id", "json_c0", "json_c1", "json_c2", "int_c",
                                         }))
                         .build();
-        assertThat(actualSchema).isEqualTo(expectedSchema);
+        Assertions.assertThat(actualSchema).isEqualTo(expectedSchema);
     }
 
     @Test
@@ -595,7 +600,7 @@ class MySqlMetadataAccessorITCase extends MySqlSourceTestBase {
                                             "id", "json_c0", "json_c1", "json_c2", "int_c",
                                         }))
                         .build();
-        assertThat(actualSchema).isEqualTo(expectedSchema);
+        Assertions.assertThat(actualSchema).isEqualTo(expectedSchema);
     }
 
     private MySqlSourceConfig getConfig(

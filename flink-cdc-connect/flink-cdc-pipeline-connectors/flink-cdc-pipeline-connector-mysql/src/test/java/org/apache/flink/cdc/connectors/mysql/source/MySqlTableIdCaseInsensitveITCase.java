@@ -18,7 +18,6 @@
 package org.apache.flink.cdc.connectors.mysql.source;
 
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
-import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.cdc.common.event.AddColumnEvent;
 import org.apache.flink.cdc.common.event.AlterColumnTypeEvent;
 import org.apache.flink.cdc.common.event.CreateTableEvent;
@@ -33,14 +32,18 @@ import org.apache.flink.cdc.common.types.DataTypes;
 import org.apache.flink.cdc.connectors.mysql.factory.MySqlDataSourceFactory;
 import org.apache.flink.cdc.connectors.mysql.source.config.MySqlSourceConfigFactory;
 import org.apache.flink.cdc.connectors.mysql.table.StartupOptions;
+import org.apache.flink.cdc.connectors.mysql.testutils.MySqSourceTestUtils;
 import org.apache.flink.cdc.connectors.mysql.testutils.MySqlContainer;
 import org.apache.flink.cdc.connectors.mysql.testutils.MySqlVersion;
 import org.apache.flink.cdc.connectors.mysql.testutils.UniqueDatabase;
 import org.apache.flink.cdc.runtime.typeutils.EventTypeInfo;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.RestartStrategyOptions;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.planner.factories.TestValuesTableFactory;
 import org.apache.flink.util.CloseableIterator;
 
+import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -51,16 +54,9 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.stream.Stream;
-
-import static org.apache.flink.cdc.connectors.mysql.source.MySqlDataSourceOptions.SCHEMA_CHANGE_ENABLED;
-import static org.apache.flink.cdc.connectors.mysql.testutils.MySqSourceTestUtils.TEST_PASSWORD;
-import static org.apache.flink.cdc.connectors.mysql.testutils.MySqSourceTestUtils.TEST_USER;
-import static org.apache.flink.cdc.connectors.mysql.testutils.MySqSourceTestUtils.fetchResults;
-import static org.assertj.core.api.Assertions.assertThat;
 
 /** IT tests for {@link MySqlDataSource}. */
 class MySqlTableIdCaseInsensitveITCase extends MySqlSourceTestBase {
@@ -69,10 +65,21 @@ class MySqlTableIdCaseInsensitveITCase extends MySqlSourceTestBase {
             createMySqlContainer(MySqlVersion.V8_0, "docker/tablename-sensitive/my.cnf");
 
     private final UniqueDatabase inventoryDatabase =
-            new UniqueDatabase(MYSQL8_CONTAINER, "inventory", TEST_USER, TEST_PASSWORD);
+            new UniqueDatabase(
+                    MYSQL8_CONTAINER,
+                    "inventory",
+                    MySqSourceTestUtils.TEST_USER,
+                    MySqSourceTestUtils.TEST_PASSWORD);
 
-    private final StreamExecutionEnvironment env =
-            StreamExecutionEnvironment.getExecutionEnvironment();
+    private final StreamExecutionEnvironment env;
+
+    {
+        final Configuration conf = new Configuration();
+        conf.set(
+                RestartStrategyOptions.RESTART_STRATEGY,
+                RestartStrategyOptions.RestartStrategyType.NO_RESTART_STRATEGY.getMainValue());
+        env = StreamExecutionEnvironment.getExecutionEnvironment(conf);
+    }
 
     @BeforeAll
     public static void startContainers() {
@@ -93,7 +100,6 @@ class MySqlTableIdCaseInsensitveITCase extends MySqlSourceTestBase {
         TestValuesTableFactory.clearAllData();
         env.setParallelism(4);
         env.enableCheckpointing(2000);
-        env.setRestartStrategy(RestartStrategies.noRestart());
     }
 
     @Test
@@ -104,14 +110,15 @@ class MySqlTableIdCaseInsensitveITCase extends MySqlSourceTestBase {
                 new MySqlSourceConfigFactory()
                         .hostname(MYSQL8_CONTAINER.getHost())
                         .port(MYSQL8_CONTAINER.getDatabasePort())
-                        .username(TEST_USER)
-                        .password(TEST_PASSWORD)
+                        .username(MySqSourceTestUtils.TEST_USER)
+                        .password(MySqSourceTestUtils.TEST_PASSWORD)
                         .databaseList(inventoryDatabase.getDatabaseName())
                         .tableList(inventoryDatabase.getDatabaseName() + "\\.products")
                         .startupOptions(StartupOptions.latest())
                         .serverId(getServerId(env.getParallelism()))
                         .serverTimeZone("UTC")
-                        .includeSchemaChanges(SCHEMA_CHANGE_ENABLED.defaultValue());
+                        .includeSchemaChanges(
+                                MySqlDataSourceOptions.SCHEMA_CHANGE_ENABLED.defaultValue());
 
         FlinkSourceProvider sourceProvider =
                 (FlinkSourceProvider) new MySqlDataSource(configFactory).getEventSourceProvider();
@@ -138,13 +145,13 @@ class MySqlTableIdCaseInsensitveITCase extends MySqlSourceTestBase {
             expected.add(
                     new AddColumnEvent(
                             tableId,
-                            Arrays.asList(
+                            List.of(
                                     new AddColumnEvent.ColumnWithPosition(
                                             Column.physicalColumn(
                                                     "cols1", DataTypes.VARCHAR(45))))));
         }
-        List<Event> actual = fetchResults(events, expected.size());
-        assertThat(actual).isEqualTo(expected);
+        List<Event> actual = MySqSourceTestUtils.fetchResults(events, expected.size());
+        Assertions.assertThat(actual).isEqualTo(expected);
     }
 
     private CreateTableEvent getProductsCreateTableEvent(TableId tableId) {

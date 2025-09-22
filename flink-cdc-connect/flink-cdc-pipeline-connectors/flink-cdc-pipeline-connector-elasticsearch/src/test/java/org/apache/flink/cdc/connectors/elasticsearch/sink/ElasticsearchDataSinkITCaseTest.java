@@ -17,7 +17,6 @@
 
 package org.apache.flink.cdc.connectors.elasticsearch.sink;
 
-import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.connector.sink2.Sink;
 import org.apache.flink.cdc.common.event.Event;
@@ -27,6 +26,8 @@ import org.apache.flink.cdc.connectors.elasticsearch.config.ElasticsearchSinkOpt
 import org.apache.flink.cdc.connectors.elasticsearch.sink.utils.ElasticsearchContainer;
 import org.apache.flink.cdc.connectors.elasticsearch.sink.utils.ElasticsearchTestUtils;
 import org.apache.flink.cdc.connectors.elasticsearch.v2.NetworkConfig;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.RestartStrategyOptions;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 
@@ -40,9 +41,8 @@ import org.apache.http.auth.AuthScope;
 import org.apache.http.auth.UsernamePasswordCredentials;
 import org.apache.http.client.CredentialsProvider;
 import org.apache.http.impl.client.BasicCredentialsProvider;
-import org.apache.http.impl.nio.client.HttpAsyncClientBuilder;
+import org.assertj.core.api.Assertions;
 import org.elasticsearch.client.RestClient;
-import org.elasticsearch.client.RestClientBuilder;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -60,8 +60,6 @@ import java.time.format.DateTimeFormatter;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 /** ITCase tests for {@link ElasticsearchDataSink}. */
 @Testcontainers
@@ -85,7 +83,7 @@ class ElasticsearchDataSinkITCaseTest {
     }
 
     @AfterEach
-    public void tearDown() throws Exception {
+    public void tearDown() {
         if (client != null) {
             client.shutdown();
         }
@@ -166,15 +164,10 @@ class ElasticsearchDataSinkITCaseTest {
                                                 ELASTICSEARCH_CONTAINER.getFirstMappedPort(),
                                                 "http"))
                                 .setHttpClientConfigCallback(
-                                        new RestClientBuilder.HttpClientConfigCallback() {
-                                            @Override
-                                            public HttpAsyncClientBuilder customizeHttpClient(
-                                                    HttpAsyncClientBuilder httpAsyncClientBuilder) {
-                                                return httpAsyncClientBuilder
+                                        httpAsyncClientBuilder ->
+                                                httpAsyncClientBuilder
                                                         .setDefaultCredentialsProvider(
-                                                                credentialsProvider);
-                                            }
-                                        })
+                                                                credentialsProvider))
                                 .build(),
                         new JacksonJsonpMapper());
         return new ElasticsearchClient(transport);
@@ -182,15 +175,17 @@ class ElasticsearchDataSinkITCaseTest {
 
     private void runJobWithEvents(List<Event> events) throws Exception {
         ElasticsearchSinkOptions options = createSinkOptions();
-        StreamExecutionEnvironment env = createStreamExecutionEnvironment();
-        ElasticsearchDataSink<Event> sink =
-                new ElasticsearchDataSink<>(options, ZoneId.systemDefault());
+        try (StreamExecutionEnvironment env = createStreamExecutionEnvironment()) {
+            ElasticsearchDataSink<Event> sink =
+                    new ElasticsearchDataSink<>(options, ZoneId.systemDefault());
 
-        DataStream<Event> stream = env.fromCollection(events, TypeInformation.of(Event.class));
-        Sink<Event> elasticsearchSink = ((FlinkSinkProvider) sink.getEventSinkProvider()).getSink();
-        stream.sinkTo(elasticsearchSink);
+            DataStream<Event> stream = env.fromCollection(events, TypeInformation.of(Event.class));
+            Sink<Event> elasticsearchSink =
+                    ((FlinkSinkProvider) sink.getEventSinkProvider()).getSink();
+            stream.sinkTo(elasticsearchSink);
 
-        env.execute("Elasticsearch Sink Test");
+            env.execute("Elasticsearch Sink Test");
+        }
     }
 
     private ElasticsearchSinkOptions createSinkOptions() {
@@ -220,10 +215,13 @@ class ElasticsearchDataSinkITCaseTest {
     }
 
     private StreamExecutionEnvironment createStreamExecutionEnvironment() {
-        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        final Configuration conf = new Configuration();
+        conf.set(
+                RestartStrategyOptions.RESTART_STRATEGY,
+                RestartStrategyOptions.RestartStrategyType.NO_RESTART_STRATEGY.getMainValue());
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment(conf);
         env.setParallelism(1);
         env.enableCheckpointing(3000);
-        env.setRestartStrategy(RestartStrategies.noRestart());
         return env;
     }
 
@@ -246,35 +244,37 @@ class ElasticsearchDataSinkITCaseTest {
 
         LOG.debug("Response source: {}", response.source());
 
-        assertThat(response.source()).isNotNull();
-        assertThat(((Number) response.source().get("id")).intValue()).isEqualTo(expectedId);
-        assertThat(((Number) response.source().get("number")).doubleValue())
+        Assertions.assertThat(response.source()).isNotNull();
+        Assertions.assertThat(((Number) response.source().get("id")).intValue())
+                .isEqualTo(expectedId);
+        Assertions.assertThat(((Number) response.source().get("number")).doubleValue())
                 .isEqualTo(expectedNumber);
-        assertThat(response.source())
+        Assertions.assertThat(response.source())
                 .containsEntry("name", expectedName)
                 .containsEntry("bool", expectedBool);
-        assertThat(((Number) response.source().get("tinyint")).byteValue())
+        Assertions.assertThat(((Number) response.source().get("tinyint")).byteValue())
                 .isEqualTo(expectedTinyint);
-        assertThat(((Number) response.source().get("smallint")).shortValue())
+        Assertions.assertThat(((Number) response.source().get("smallint")).shortValue())
                 .isEqualTo(expectedSmallint);
-        assertThat(((Number) response.source().get("bigint")).longValue())
+        Assertions.assertThat(((Number) response.source().get("bigint")).longValue())
                 .isEqualTo(expectedBigint);
-        assertThat(((Number) response.source().get("float")).floatValue()).isEqualTo(expectedFloat);
-        assertThat(new BigDecimal(response.source().get("decimal").toString()))
+        Assertions.assertThat(((Number) response.source().get("float")).floatValue())
+                .isEqualTo(expectedFloat);
+        Assertions.assertThat(new BigDecimal(response.source().get("decimal").toString()))
                 .isEqualTo(expectedDecimal);
 
         String timestampString = response.source().get("timestamp").toString();
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSSSSS");
         LocalDateTime dateTime = LocalDateTime.parse(timestampString, formatter);
         long timestampMillis = dateTime.toInstant(ZoneOffset.UTC).toEpochMilli();
-        assertThat(timestampMillis).isEqualTo(expectedTimestamp);
+        Assertions.assertThat(timestampMillis).isEqualTo(expectedTimestamp);
     }
 
     private void verifyDeletedData(TableId tableId, String id) throws Exception {
         GetRequest getRequest = new GetRequest.Builder().index(tableId.toString()).id(id).build();
         GetResponse<Map> response = client.get(getRequest, Map.class);
 
-        assertThat(response.source()).isNull();
+        Assertions.assertThat(response.source()).isNull();
     }
 
     private void verifyInsertedDataWithNewColumn(
@@ -288,7 +288,7 @@ class ElasticsearchDataSinkITCaseTest {
         GetRequest getRequest = new GetRequest.Builder().index(tableId.toString()).id(id).build();
         GetResponse<Map> response = client.get(getRequest, Map.class);
 
-        assertThat(response.source())
+        Assertions.assertThat(response.source())
                 .isNotNull()
                 .containsEntry("id", expectedId)
                 .containsEntry("number", expectedNumber)

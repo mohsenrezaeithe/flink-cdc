@@ -18,7 +18,6 @@
 package org.apache.flink.cdc.connectors.mysql.source;
 
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
-import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.cdc.common.data.DateData;
 import org.apache.flink.cdc.common.data.DecimalData;
 import org.apache.flink.cdc.common.data.LocalZonedTimestampData;
@@ -38,6 +37,8 @@ import org.apache.flink.cdc.connectors.mysql.testutils.MySqlContainer;
 import org.apache.flink.cdc.connectors.mysql.testutils.MySqlVersion;
 import org.apache.flink.cdc.connectors.mysql.testutils.RecordDataTestUtils;
 import org.apache.flink.cdc.connectors.mysql.testutils.UniqueDatabase;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.RestartStrategyOptions;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.util.CloseableIterator;
 
@@ -48,6 +49,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.testcontainers.lifecycle.Startables;
 
+import javax.xml.bind.DatatypeConverter;
+
 import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.Statement;
@@ -57,8 +60,6 @@ import java.time.ZoneId;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Stream;
-
-import static javax.xml.bind.DatatypeConverter.parseHexBinary;
 
 /** IT case for MySQL event source. */
 class MySqlFullTypesITCase extends MySqlSourceTestBase {
@@ -79,8 +80,15 @@ class MySqlFullTypesITCase extends MySqlSourceTestBase {
                     MySqSourceTestUtils.TEST_USER,
                     MySqSourceTestUtils.TEST_PASSWORD);
 
-    private final StreamExecutionEnvironment env =
-            StreamExecutionEnvironment.getExecutionEnvironment();
+    private final StreamExecutionEnvironment env;
+
+    {
+        final Configuration conf = new Configuration();
+        conf.set(
+                RestartStrategyOptions.RESTART_STRATEGY,
+                RestartStrategyOptions.RestartStrategyType.NO_RESTART_STRATEGY.getMainValue());
+        env = StreamExecutionEnvironment.getExecutionEnvironment(conf);
+    }
 
     @BeforeAll
     public static void beforeClass() {
@@ -100,7 +108,6 @@ class MySqlFullTypesITCase extends MySqlSourceTestBase {
     public void before() {
         env.setParallelism(DEFAULT_PARALLELISM);
         env.enableCheckpointing(200);
-        env.setRestartStrategy(RestartStrategies.noRestart());
     }
 
     @Test
@@ -447,7 +454,8 @@ class MySqlFullTypesITCase extends MySqlSourceTestBase {
                     new byte[] {3},
                     true,
                     true,
-                    parseHexBinary("651aed08-390f-4893-b2f1-36923e7b7400".replace("-", "")),
+                    DatatypeConverter.parseHexBinary(
+                            "651aed08-390f-4893-b2f1-36923e7b7400".replace("-", "")),
                     new byte[] {4, 4, 4, 4, 4, 4, 4, 4},
                     BinaryStringData.fromString("text"),
                     new byte[] {16},
