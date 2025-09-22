@@ -60,6 +60,14 @@ limitations under the License.
 
     <properties>
         <revision>4.0-SNAPSHOT</revision>
+
+        <!-- Java versions -->
+        <java.version>11</java.version>
+        <maven.compiler.release>${java.version}</maven.compiler.release>
+        <maven.compiler.source>${java.version}</maven.compiler.source>
+        <maven.compiler.target>${java.version}</maven.compiler.target>
+        <target.java.version>${java.version}</target.java.version>
+
         <scala.binary.version>2.12</scala.binary.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <!-- Enforce single fork execution due to heavy mini cluster use in the tests -->
