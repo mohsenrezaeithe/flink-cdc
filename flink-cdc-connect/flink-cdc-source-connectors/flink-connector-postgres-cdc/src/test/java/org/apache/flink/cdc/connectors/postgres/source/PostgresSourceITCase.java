@@ -19,7 +19,6 @@ package org.apache.flink.cdc.connectors.postgres.source;
 
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
-import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.cdc.connectors.base.options.StartupOptions;
 import org.apache.flink.cdc.connectors.base.source.utils.hooks.SnapshotPhaseHook;
 import org.apache.flink.cdc.connectors.base.source.utils.hooks.SnapshotPhaseHooks;
@@ -30,6 +29,8 @@ import org.apache.flink.cdc.connectors.postgres.testutils.TestTable;
 import org.apache.flink.cdc.connectors.postgres.testutils.TestTableId;
 import org.apache.flink.cdc.connectors.postgres.testutils.UniqueDatabase;
 import org.apache.flink.cdc.connectors.utils.ExternalResourceProxy;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.RestartStrategyOptions;
 import org.apache.flink.core.execution.JobClient;
 import org.apache.flink.runtime.minicluster.RpcServiceSharing;
 import org.apache.flink.runtime.testutils.MiniClusterResourceConfiguration;
@@ -60,6 +61,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.IOException;
 import java.sql.SQLException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -262,17 +264,20 @@ class PostgresSourceITCase extends PostgresTestBase {
     @ParameterizedTest
     @ValueSource(strings = {"initial", "latest-offset"})
     void testConsumingTableWithoutPrimaryKey(String scanStartupMode) throws Exception {
+        final Configuration restartStrategyConf = new Configuration();
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY,
+                RestartStrategyOptions.RestartStrategyType.NO_RESTART_STRATEGY.getMainValue());
         if (DEFAULT_SCAN_STARTUP_MODE.equals(scanStartupMode)) {
             Assertions.assertThatThrownBy(
-                            () -> {
-                                testPostgresParallelSource(
-                                        1,
-                                        scanStartupMode,
-                                        PostgresTestUtils.FailoverType.NONE,
-                                        PostgresTestUtils.FailoverPhase.NEVER,
-                                        new String[] {"customers_no_pk"},
-                                        RestartStrategies.noRestart());
-                            })
+                            () ->
+                                    testPostgresParallelSource(
+                                            1,
+                                            scanStartupMode,
+                                            PostgresTestUtils.FailoverType.NONE,
+                                            PostgresTestUtils.FailoverPhase.NEVER,
+                                            new String[] {"customers_no_pk"},
+                                            restartStrategyConf))
                     .hasStackTraceContaining(
                             "To use incremental snapshot, 'scan.incremental.snapshot.chunk.key-column' must be set when the table doesn't have primary keys.");
         } else {
@@ -282,31 +287,47 @@ class PostgresSourceITCase extends PostgresTestBase {
                     PostgresTestUtils.FailoverType.NONE,
                     PostgresTestUtils.FailoverPhase.NEVER,
                     new String[] {"customers_no_pk"},
-                    RestartStrategies.noRestart());
+                    restartStrategyConf);
         }
     }
 
     @Test
     void testReadSingleTableWithSingleParallelismAndSkipBackfill() throws Exception {
+        final Configuration restartStrategyConf = new Configuration();
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY,
+                RestartStrategyOptions.RestartStrategyType.FIXED_DELAY.getMainValue());
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_ATTEMPTS, 1);
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY_FIXED_DELAY_DELAY, Duration.ofSeconds(0));
         testPostgresParallelSource(
                 DEFAULT_PARALLELISM,
                 DEFAULT_SCAN_STARTUP_MODE,
                 PostgresTestUtils.FailoverType.TM,
                 PostgresTestUtils.FailoverPhase.SNAPSHOT,
                 new String[] {"Customers"},
-                RestartStrategies.fixedDelayRestart(1, 0),
+                restartStrategyConf,
                 Collections.singletonMap("scan.incremental.snapshot.backfill.skip", "true"));
     }
 
     @Test
     void testReadSingleTableWithSingleParallelismAndUnboundedChunkFirst() throws Exception {
+        final Configuration restartStrategyConf = new Configuration();
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY,
+                RestartStrategyOptions.RestartStrategyType.FIXED_DELAY.getMainValue());
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_ATTEMPTS, 1);
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY_FIXED_DELAY_DELAY, Duration.ofSeconds(0));
         testPostgresParallelSource(
                 DEFAULT_PARALLELISM,
                 DEFAULT_SCAN_STARTUP_MODE,
                 PostgresTestUtils.FailoverType.TM,
                 PostgresTestUtils.FailoverPhase.SNAPSHOT,
                 new String[] {"Customers"},
-                RestartStrategies.fixedDelayRestart(1, 0),
+                restartStrategyConf,
                 Collections.singletonMap(
                         "scan.incremental.snapshot.unbounded-chunk-first.enabled", "true"));
     }
@@ -317,13 +338,21 @@ class PostgresSourceITCase extends PostgresTestBase {
         Map<String, String> options = new HashMap<>();
         options.put("debezium.snapshot.fetch.size", "2");
         options.put("debezium.max.batch.size", "3");
+        final Configuration restartStrategyConf = new Configuration();
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY,
+                RestartStrategyOptions.RestartStrategyType.FIXED_DELAY.getMainValue());
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_ATTEMPTS, 1);
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY_FIXED_DELAY_DELAY, Duration.ofSeconds(0));
         testPostgresParallelSource(
                 2,
                 scanStartupMode,
                 PostgresTestUtils.FailoverType.JM,
                 PostgresTestUtils.FailoverPhase.STREAM,
                 new String[] {"Customers"},
-                RestartStrategies.fixedDelayRestart(1, 0),
+                restartStrategyConf,
                 options,
                 this::checkStreamDataWithDDLDuringFailover);
     }
@@ -333,13 +362,21 @@ class PostgresSourceITCase extends PostgresTestBase {
         Map<String, String> options = new HashMap<>();
         options.put("debezium.snapshot.fetch.size", "2");
         options.put("debezium.max.batch.size", "3");
+        final Configuration restartStrategyConf = new Configuration();
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY,
+                RestartStrategyOptions.RestartStrategyType.FIXED_DELAY.getMainValue());
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_ATTEMPTS, 1);
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY_FIXED_DELAY_DELAY, Duration.ofSeconds(0));
         testPostgresParallelSource(
                 1,
                 DEFAULT_SCAN_STARTUP_MODE,
                 PostgresTestUtils.FailoverType.NONE,
                 PostgresTestUtils.FailoverPhase.NEVER,
                 new String[] {"Customers"},
-                RestartStrategies.fixedDelayRestart(1, 0),
+                restartStrategyConf,
                 options);
     }
 
@@ -580,13 +617,21 @@ class PostgresSourceITCase extends PostgresTestBase {
         Map<String, String> options = new HashMap<>();
         options.put("scan.incremental.snapshot.backfill.skip", "false");
         options.put("connector", "postgres-cdc-mock");
+        final Configuration restartStrategyConf = new Configuration();
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY,
+                RestartStrategyOptions.RestartStrategyType.FIXED_DELAY.getMainValue());
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_ATTEMPTS, 1);
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY_FIXED_DELAY_DELAY, Duration.ofSeconds(0));
         testPostgresParallelSource(
                 1,
                 scanStartupMode,
                 PostgresTestUtils.FailoverType.JM,
                 PostgresTestUtils.FailoverPhase.STREAM,
                 new String[] {"Customers"},
-                RestartStrategies.fixedDelayRestart(1, 0),
+                restartStrategyConf,
                 options,
                 this::checkStreamDataWithHook);
     }
@@ -596,13 +641,17 @@ class PostgresSourceITCase extends PostgresTestBase {
     public void testTableWithChunkColumnOfNoPrimaryKey(String scanStartupMode) throws Exception {
         Assumptions.assumeThat(scanStartupMode).isEqualTo(DEFAULT_SCAN_STARTUP_MODE);
         String chunkColumn = "Name";
+        final Configuration restartStrategyConf = new Configuration();
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY,
+                RestartStrategyOptions.RestartStrategyType.NO_RESTART_STRATEGY.getMainValue());
         testPostgresParallelSource(
                 1,
                 scanStartupMode,
                 PostgresTestUtils.FailoverType.NONE,
                 PostgresTestUtils.FailoverPhase.NEVER,
                 new String[] {"Customers"},
-                RestartStrategies.noRestart(),
+                restartStrategyConf,
                 Collections.singletonMap(
                         "scan.incremental.snapshot.chunk.key-column", chunkColumn));
 
@@ -625,13 +674,17 @@ class PostgresSourceITCase extends PostgresTestBase {
         Map<String, String> options = new HashMap<>();
         options.put("heartbeat.interval.ms", "100");
         options.put("debezium.heartbeat.action.query", "INSERT INTO heart_beat_table VALUES(1)");
+        final Configuration restartStrategyConf = new Configuration();
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY,
+                RestartStrategyOptions.RestartStrategyType.NO_RESTART_STRATEGY.getMainValue());
         testPostgresParallelSource(
                 1,
                 scanStartupMode,
                 PostgresTestUtils.FailoverType.NONE,
                 PostgresTestUtils.FailoverPhase.NEVER,
                 new String[] {"Customers"},
-                RestartStrategies.noRestart(),
+                restartStrategyConf,
                 options);
         try (PostgresConnection connection = getConnection()) {
             assertThat(getCountOfTable(connection, tableId)).isGreaterThan(0);
@@ -645,13 +698,21 @@ class PostgresSourceITCase extends PostgresTestBase {
         options.put("scan.incremental.snapshot.backfill.skip", "false");
         options.put("scan.newly-added-table.enabled", "true");
         options.put("scan.lsn-commit.checkpoints-num-delay", "0");
+        final Configuration restartStrategyConf = new Configuration();
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY,
+                RestartStrategyOptions.RestartStrategyType.FIXED_DELAY.getMainValue());
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_ATTEMPTS, 1);
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY_FIXED_DELAY_DELAY, Duration.ofSeconds(0));
         testPostgresParallelSource(
                 1,
                 scanStartupMode,
                 PostgresTestUtils.FailoverType.TM,
                 PostgresTestUtils.FailoverPhase.STREAM,
                 new String[] {"Customers"},
-                RestartStrategies.fixedDelayRestart(1, 0),
+                restartStrategyConf,
                 options,
                 this::checkStreamDataWithTestLsn);
     }
@@ -659,13 +720,21 @@ class PostgresSourceITCase extends PostgresTestBase {
     @ParameterizedTest
     @ValueSource(strings = {"initial", "latest-offset"})
     void testAppendOnly(String scanStartupMode) throws Exception {
+        final Configuration restartStrategyConf = new Configuration();
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY,
+                RestartStrategyOptions.RestartStrategyType.FIXED_DELAY.getMainValue());
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_ATTEMPTS, 1);
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY_FIXED_DELAY_DELAY, Duration.ofSeconds(0));
         testPostgresParallelSource(
                 1,
                 scanStartupMode,
                 PostgresTestUtils.FailoverType.NONE,
                 PostgresTestUtils.FailoverPhase.NEVER,
                 new String[] {"Customers"},
-                RestartStrategies.fixedDelayRestart(1, 0),
+                restartStrategyConf,
                 Collections.singletonMap("scan.read-changelog-as-append-only.enabled", "true"),
                 this::checkStreamDataAsAppend);
     }
@@ -776,13 +845,21 @@ class PostgresSourceITCase extends PostgresTestBase {
             String[] captureCustomerTables,
             String scanStartupMode)
             throws Exception {
+        final Configuration restartStrategyConf = new Configuration();
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY,
+                RestartStrategyOptions.RestartStrategyType.FIXED_DELAY.getMainValue());
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_ATTEMPTS, 1);
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY_FIXED_DELAY_DELAY, Duration.ofSeconds(0));
         testPostgresParallelSource(
                 parallelism,
                 scanStartupMode,
                 failoverType,
                 failoverPhase,
                 captureCustomerTables,
-                RestartStrategies.fixedDelayRestart(1, 0));
+                restartStrategyConf);
     }
 
     private void testPostgresParallelSource(
@@ -791,7 +868,7 @@ class PostgresSourceITCase extends PostgresTestBase {
             PostgresTestUtils.FailoverType failoverType,
             PostgresTestUtils.FailoverPhase failoverPhase,
             String[] captureCustomerTables,
-            RestartStrategies.RestartStrategyConfiguration restartStrategyConfiguration)
+            Configuration restartStrategyConf)
             throws Exception {
         testPostgresParallelSource(
                 parallelism,
@@ -799,7 +876,7 @@ class PostgresSourceITCase extends PostgresTestBase {
                 failoverType,
                 failoverPhase,
                 captureCustomerTables,
-                restartStrategyConfiguration,
+                restartStrategyConf,
                 new HashMap<>());
     }
 
@@ -809,7 +886,7 @@ class PostgresSourceITCase extends PostgresTestBase {
             PostgresTestUtils.FailoverType failoverType,
             PostgresTestUtils.FailoverPhase failoverPhase,
             String[] captureCustomerTables,
-            RestartStrategies.RestartStrategyConfiguration restartStrategyConfiguration,
+            Configuration restartStrategyConf,
             Map<String, String> otherOptions)
             throws Exception {
         testPostgresParallelSource(
@@ -818,7 +895,7 @@ class PostgresSourceITCase extends PostgresTestBase {
                 failoverType,
                 failoverPhase,
                 captureCustomerTables,
-                restartStrategyConfiguration,
+                restartStrategyConf,
                 otherOptions,
                 this::checkStreamData);
     }
@@ -829,16 +906,17 @@ class PostgresSourceITCase extends PostgresTestBase {
             PostgresTestUtils.FailoverType failoverType,
             PostgresTestUtils.FailoverPhase failoverPhase,
             String[] captureCustomerTables,
-            RestartStrategies.RestartStrategyConfiguration restartStrategyConfiguration,
+            Configuration restartStrategyConf,
             Map<String, String> otherOptions,
             StreamDataChecker streamDataChecker)
             throws Exception {
-        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        StreamExecutionEnvironment env =
+                StreamExecutionEnvironment.getExecutionEnvironment(
+                        new Configuration(restartStrategyConf));
         StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
 
         env.setParallelism(parallelism);
         env.enableCheckpointing(200L);
-        env.setRestartStrategy(restartStrategyConfiguration);
 
         tEnv.executeSql(getSourceDDL(scanStartupMode, captureCustomerTables, otherOptions));
         TableResult tableResult = tEnv.executeSql("select * from customers");
@@ -1272,7 +1350,7 @@ class PostgresSourceITCase extends PostgresTestBase {
      */
     private void makeFirstPartStreamEvents(JdbcConnection connection, TestTableId tableId)
             throws SQLException {
-        try {
+        try (connection) {
             connection.setAutoCommit(false);
 
             // make stream events for the first split
@@ -1284,8 +1362,6 @@ class PostgresSourceITCase extends PostgresTestBase {
                             + " VALUES(102, 'user_2', 'Shanghai', '123567891234')",
                     "UPDATE " + tableId.toSql() + " SET address = 'Shanghai' where \"Id\" = 103");
             connection.commit();
-        } finally {
-            connection.close();
         }
     }
 
@@ -1295,7 +1371,7 @@ class PostgresSourceITCase extends PostgresTestBase {
      */
     private void makeSecondPartStreamEvents(JdbcConnection connection, TestTableId tableId)
             throws SQLException {
-        try {
+        try (connection) {
             connection.setAutoCommit(false);
 
             // make stream events for split-1
@@ -1311,8 +1387,6 @@ class PostgresSourceITCase extends PostgresTestBase {
                             + " (2002, 'user_23','Shanghai','123567891234'),"
                             + "(2003, 'user_24','Shanghai','123567891234')");
             connection.commit();
-        } finally {
-            connection.close();
         }
     }
 

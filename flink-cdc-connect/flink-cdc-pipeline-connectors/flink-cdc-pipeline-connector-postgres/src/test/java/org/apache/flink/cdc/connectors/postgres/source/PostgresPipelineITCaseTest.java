@@ -18,7 +18,6 @@
 package org.apache.flink.cdc.connectors.postgres.source;
 
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
-import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.cdc.common.configuration.Configuration;
 import org.apache.flink.cdc.common.data.binary.BinaryStringData;
 import org.apache.flink.cdc.common.event.CreateTableEvent;
@@ -40,10 +39,12 @@ import org.apache.flink.cdc.connectors.postgres.source.config.PostgresSourceConf
 import org.apache.flink.cdc.connectors.postgres.testutils.UniqueDatabase;
 import org.apache.flink.cdc.runtime.typeutils.BinaryRecordDataGenerator;
 import org.apache.flink.cdc.runtime.typeutils.EventTypeInfo;
+import org.apache.flink.configuration.RestartStrategyOptions;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.planner.factories.TestValuesTableFactory;
 import org.apache.flink.util.CloseableIterator;
 
+import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -51,6 +52,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.testcontainers.containers.PostgreSQLContainer;
 
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -63,9 +65,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.testcontainers.containers.PostgreSQLContainer.POSTGRESQL_PORT;
-
 /** Integration tests for Postgres source. */
 public class PostgresPipelineITCaseTest extends PostgresTestBase {
     private static final Logger LOG = LoggerFactory.getLogger(PostgresPipelineITCaseTest.class);
@@ -73,8 +72,17 @@ public class PostgresPipelineITCaseTest extends PostgresTestBase {
     private final UniqueDatabase inventoryDatabase =
             new UniqueDatabase(
                     POSTGRES_CONTAINER, "inventory", "inventory", TEST_USER, TEST_PASSWORD);
-    private static final StreamExecutionEnvironment env =
-            StreamExecutionEnvironment.getExecutionEnvironment();
+    private static final StreamExecutionEnvironment env;
+
+    static {
+        final org.apache.flink.configuration.Configuration conf =
+                new org.apache.flink.configuration.Configuration();
+        conf.set(
+                RestartStrategyOptions.RESTART_STRATEGY,
+                RestartStrategyOptions.RestartStrategyType.NO_RESTART_STRATEGY.getMainValue());
+        env = StreamExecutionEnvironment.getExecutionEnvironment(conf);
+    }
+
     private String slotName;
 
     @BeforeEach
@@ -82,7 +90,6 @@ public class PostgresPipelineITCaseTest extends PostgresTestBase {
         TestValuesTableFactory.clearAllData();
         env.setParallelism(4);
         env.enableCheckpointing(2000);
-        env.setRestartStrategy(RestartStrategies.noRestart());
         slotName = getSlotName();
     }
 
@@ -98,7 +105,9 @@ public class PostgresPipelineITCaseTest extends PostgresTestBase {
                 (PostgresSourceConfigFactory)
                         new PostgresSourceConfigFactory()
                                 .hostname(POSTGRES_CONTAINER.getHost())
-                                .port(POSTGRES_CONTAINER.getMappedPort(POSTGRESQL_PORT))
+                                .port(
+                                        POSTGRES_CONTAINER.getMappedPort(
+                                                PostgreSQLContainer.POSTGRESQL_PORT))
                                 .username(TEST_USER)
                                 .password(TEST_PASSWORD)
                                 .databaseList(inventoryDatabase.getDatabaseName())
@@ -130,9 +139,9 @@ public class PostgresPipelineITCaseTest extends PostgresTestBase {
         // to downstream. Since it is not possible to predict how many CreateTableEvents should we
         // expect, we simply filter them out from expected sets, and assert there's at least one.
         List<Event> actual = fetchResultsExcept(events, expectedSnapshot.size(), createTableEvent);
-        assertThat(actual.subList(0, expectedSnapshot.size()))
+        Assertions.assertThat(actual.subList(0, expectedSnapshot.size()))
                 .containsExactlyInAnyOrder(expectedSnapshot.toArray(new Event[0]));
-        assertThat(inventoryDatabase.checkSlot(slotName)).isEqualTo(slotName);
+        Assertions.assertThat(inventoryDatabase.checkSlot(slotName)).isEqualTo(slotName);
     }
 
     @ParameterizedTest(name = "unboundedChunkFirst: {0}")
@@ -143,7 +152,7 @@ public class PostgresPipelineITCaseTest extends PostgresTestBase {
         sourceConfiguration.set(PostgresDataSourceOptions.HOSTNAME, POSTGRES_CONTAINER.getHost());
         sourceConfiguration.set(
                 PostgresDataSourceOptions.PG_PORT,
-                POSTGRES_CONTAINER.getMappedPort(POSTGRESQL_PORT));
+                POSTGRES_CONTAINER.getMappedPort(PostgreSQLContainer.POSTGRESQL_PORT));
         sourceConfiguration.set(PostgresDataSourceOptions.USERNAME, TEST_USER);
         sourceConfiguration.set(PostgresDataSourceOptions.PASSWORD, TEST_PASSWORD);
         sourceConfiguration.set(PostgresDataSourceOptions.SLOT_NAME, slotName);
@@ -292,19 +301,21 @@ public class PostgresPipelineITCaseTest extends PostgresTestBase {
         List<Event> actualSnapshotEvents = actual.subList(0, snapshotRecordsCount);
         List<Event> actuallogEvents = actual.subList(snapshotRecordsCount, actual.size());
 
-        assertThat(actualSnapshotEvents).containsExactlyInAnyOrderElementsOf(expectedSnapshot);
-        assertThat(actuallogEvents).hasSize(logRecordsCount);
+        Assertions.assertThat(actualSnapshotEvents)
+                .containsExactlyInAnyOrderElementsOf(expectedSnapshot);
+        Assertions.assertThat(actuallogEvents).hasSize(logRecordsCount);
 
         for (int i = 0; i < logRecordsCount; i++) {
             if (expectedlog.get(i) instanceof SchemaChangeEvent) {
-                assertThat(actuallogEvents.get(i)).isEqualTo(expectedlog.get(i));
+                Assertions.assertThat(actuallogEvents.get(i)).isEqualTo(expectedlog.get(i));
             } else {
                 DataChangeEvent expectedEvent = (DataChangeEvent) expectedlog.get(i);
                 DataChangeEvent actualEvent = (DataChangeEvent) actuallogEvents.get(i);
-                assertThat(actualEvent.op()).isEqualTo(expectedEvent.op());
-                assertThat(actualEvent.before()).isEqualTo(expectedEvent.before());
-                assertThat(actualEvent.after()).isEqualTo(expectedEvent.after());
-                assertThat(actualEvent.meta().get("op_ts")).isGreaterThanOrEqualTo(startTime);
+                Assertions.assertThat(actualEvent.op()).isEqualTo(expectedEvent.op());
+                Assertions.assertThat(actualEvent.before()).isEqualTo(expectedEvent.before());
+                Assertions.assertThat(actualEvent.after()).isEqualTo(expectedEvent.after());
+                Assertions.assertThat(actualEvent.meta().get("op_ts"))
+                        .isGreaterThanOrEqualTo(startTime);
             }
         }
     }
@@ -316,7 +327,9 @@ public class PostgresPipelineITCaseTest extends PostgresTestBase {
                 (PostgresSourceConfigFactory)
                         new PostgresSourceConfigFactory()
                                 .hostname(POSTGRES_CONTAINER.getHost())
-                                .port(POSTGRES_CONTAINER.getMappedPort(POSTGRESQL_PORT))
+                                .port(
+                                        POSTGRES_CONTAINER.getMappedPort(
+                                                PostgreSQLContainer.POSTGRESQL_PORT))
                                 .username(TEST_USER)
                                 .password(TEST_PASSWORD)
                                 .databaseList(inventoryDatabase.getDatabaseName())
@@ -349,10 +362,10 @@ public class PostgresPipelineITCaseTest extends PostgresTestBase {
         // to downstream. Since it is not possible to predict how many CreateTableEvents should we
         // expect, we simply filter them out from expected sets, and assert there's at least one.
         List<Event> actual = fetchResultsExcept(events, expectedSnapshot.size(), createTableEvent);
-        assertThat(actual.subList(0, expectedSnapshot.size()))
+        Assertions.assertThat(actual.subList(0, expectedSnapshot.size()))
                 .containsExactlyInAnyOrder(expectedSnapshot.toArray(new Event[0]));
         Thread.sleep(10000);
-        assertThat(inventoryDatabase.checkSlot(slotName))
+        Assertions.assertThat(inventoryDatabase.checkSlot(slotName))
                 .isEqualTo(String.format("Replication slot \"%s\" does not exist", slotName));
     }
 
@@ -369,7 +382,7 @@ public class PostgresPipelineITCaseTest extends PostgresTestBase {
             }
         }
         // Also ensure we've received at least one or many side events.
-        assertThat(sideResults).isNotEmpty();
+        Assertions.assertThat(sideResults).isNotEmpty();
         return result;
     }
 
@@ -488,7 +501,7 @@ public class PostgresPipelineITCaseTest extends PostgresTestBase {
                                 "id",
                                 DataTypes.INT().notNull(),
                                 null,
-                                "nextval(\'inventory.products_id_seq\'::regclass)")
+                                "nextval('inventory.products_id_seq'::regclass)")
                         .physicalColumn(
                                 "name",
                                 DataTypes.VARCHAR(255).notNull(),

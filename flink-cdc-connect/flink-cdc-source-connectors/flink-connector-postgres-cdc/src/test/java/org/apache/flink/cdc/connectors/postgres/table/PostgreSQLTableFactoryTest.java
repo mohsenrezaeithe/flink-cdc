@@ -17,10 +17,11 @@
 
 package org.apache.flink.cdc.connectors.postgres.table;
 
+import org.apache.flink.cdc.connectors.base.options.JdbcSourceOptions;
+import org.apache.flink.cdc.connectors.base.options.SourceOptions;
 import org.apache.flink.cdc.connectors.base.options.StartupOptions;
-import org.apache.flink.cdc.debezium.DebeziumSourceFunction;
+import org.apache.flink.cdc.connectors.postgres.source.config.PostgresSourceOptions;
 import org.apache.flink.cdc.debezium.table.DebeziumChangelogMode;
-import org.apache.flink.cdc.debezium.utils.ResolvedSchemaUtils;
 import org.apache.flink.configuration.ConfigOption;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.table.api.DataTypes;
@@ -32,12 +33,8 @@ import org.apache.flink.table.catalog.ResolvedCatalogTable;
 import org.apache.flink.table.catalog.ResolvedSchema;
 import org.apache.flink.table.catalog.UniqueConstraint;
 import org.apache.flink.table.connector.source.DynamicTableSource;
-import org.apache.flink.table.connector.source.ScanTableSource;
-import org.apache.flink.table.connector.source.SourceFunctionProvider;
-import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.factories.Factory;
 import org.apache.flink.table.factories.FactoryUtil;
-import org.apache.flink.table.runtime.connector.source.ScanRuntimeProviderContext;
 
 import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.Test;
@@ -49,24 +46,6 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
-
-import static org.apache.flink.cdc.connectors.base.options.JdbcSourceOptions.CONNECTION_POOL_SIZE;
-import static org.apache.flink.cdc.connectors.base.options.JdbcSourceOptions.CONNECT_MAX_RETRIES;
-import static org.apache.flink.cdc.connectors.base.options.JdbcSourceOptions.CONNECT_TIMEOUT;
-import static org.apache.flink.cdc.connectors.base.options.SourceOptions.CHUNK_META_GROUP_SIZE;
-import static org.apache.flink.cdc.connectors.base.options.SourceOptions.SCAN_INCREMENTAL_CLOSE_IDLE_READER_ENABLED;
-import static org.apache.flink.cdc.connectors.base.options.SourceOptions.SCAN_INCREMENTAL_SNAPSHOT_BACKFILL_SKIP;
-import static org.apache.flink.cdc.connectors.base.options.SourceOptions.SCAN_INCREMENTAL_SNAPSHOT_CHUNK_SIZE;
-import static org.apache.flink.cdc.connectors.base.options.SourceOptions.SCAN_INCREMENTAL_SNAPSHOT_UNBOUNDED_CHUNK_FIRST_ENABLED;
-import static org.apache.flink.cdc.connectors.base.options.SourceOptions.SCAN_NEWLY_ADDED_TABLE_ENABLED;
-import static org.apache.flink.cdc.connectors.base.options.SourceOptions.SCAN_READ_CHANGELOG_AS_APPEND_ONLY_ENABLED;
-import static org.apache.flink.cdc.connectors.base.options.SourceOptions.SCAN_SNAPSHOT_FETCH_SIZE;
-import static org.apache.flink.cdc.connectors.base.options.SourceOptions.SPLIT_KEY_EVEN_DISTRIBUTION_FACTOR_LOWER_BOUND;
-import static org.apache.flink.cdc.connectors.base.options.SourceOptions.SPLIT_KEY_EVEN_DISTRIBUTION_FACTOR_UPPER_BOUND;
-import static org.apache.flink.cdc.connectors.postgres.source.config.PostgresSourceOptions.HEARTBEAT_INTERVAL;
-import static org.apache.flink.cdc.connectors.postgres.source.config.PostgresSourceOptions.SCAN_INCLUDE_PARTITIONED_TABLES_ENABLED;
-import static org.apache.flink.cdc.connectors.postgres.source.config.PostgresSourceOptions.SCAN_LSN_COMMIT_CHECKPOINTS_DELAY;
-import static org.apache.flink.cdc.connectors.utils.AssertUtils.assertProducedTypeOfSourceFunction;
 
 /** Test for {@link PostgreSQLTableSource} created by {@link PostgreSQLTableFactory}. */
 class PostgreSQLTableFactoryTest {
@@ -117,157 +96,7 @@ class PostgreSQLTableFactoryTest {
     private static final String MY_SLOT_NAME = "flinktest";
     private static final Properties PROPERTIES = new Properties();
     private static final boolean SCAN_INCREMENTAL_CLOSE_IDLE_READER_ENABLED_DEFAULT =
-            SCAN_INCREMENTAL_CLOSE_IDLE_READER_ENABLED.defaultValue();
-
-    @Test
-    void testCommonProperties() {
-        Map<String, String> properties = getAllOptions();
-
-        // validation for source
-        DynamicTableSource actualSource = createTableSource(SCHEMA, properties);
-        PostgreSQLTableSource expectedSource =
-                new PostgreSQLTableSource(
-                        SCHEMA,
-                        5432,
-                        MY_LOCALHOST,
-                        MY_DATABASE,
-                        MY_SCHEMA,
-                        MY_TABLE,
-                        MY_USERNAME,
-                        MY_PASSWORD,
-                        "decoderbufs",
-                        MY_SLOT_NAME,
-                        DebeziumChangelogMode.ALL,
-                        PROPERTIES,
-                        false,
-                        SCAN_INCREMENTAL_SNAPSHOT_CHUNK_SIZE.defaultValue(),
-                        CHUNK_META_GROUP_SIZE.defaultValue(),
-                        SCAN_SNAPSHOT_FETCH_SIZE.defaultValue(),
-                        CONNECT_TIMEOUT.defaultValue(),
-                        CONNECT_MAX_RETRIES.defaultValue(),
-                        CONNECTION_POOL_SIZE.defaultValue(),
-                        SPLIT_KEY_EVEN_DISTRIBUTION_FACTOR_UPPER_BOUND.defaultValue(),
-                        SPLIT_KEY_EVEN_DISTRIBUTION_FACTOR_LOWER_BOUND.defaultValue(),
-                        HEARTBEAT_INTERVAL.defaultValue(),
-                        StartupOptions.initial(),
-                        null,
-                        SCAN_INCREMENTAL_CLOSE_IDLE_READER_ENABLED_DEFAULT,
-                        SCAN_INCREMENTAL_SNAPSHOT_BACKFILL_SKIP.defaultValue(),
-                        SCAN_NEWLY_ADDED_TABLE_ENABLED.defaultValue(),
-                        SCAN_LSN_COMMIT_CHECKPOINTS_DELAY.defaultValue(),
-                        SCAN_INCREMENTAL_SNAPSHOT_UNBOUNDED_CHUNK_FIRST_ENABLED.defaultValue(),
-                        SCAN_READ_CHANGELOG_AS_APPEND_ONLY_ENABLED.defaultValue(),
-                        SCAN_INCLUDE_PARTITIONED_TABLES_ENABLED.defaultValue());
-        Assertions.assertThat(actualSource).isEqualTo(expectedSource);
-    }
-
-    @Test
-    void testOptionalProperties() {
-        Map<String, String> options = getAllOptions();
-        options.put("port", "5444");
-        options.put("decoding.plugin.name", "wal2json");
-        options.put("debezium.snapshot.mode", "never");
-        options.put("changelog-mode", "upsert");
-        options.put("scan.incremental.snapshot.backfill.skip", "true");
-        options.put("scan.newly-added-table.enabled", "true");
-        options.put("scan.read-changelog-as-append-only.enabled", "true");
-
-        DynamicTableSource actualSource = createTableSource(options);
-        Properties dbzProperties = new Properties();
-        dbzProperties.put("snapshot.mode", "never");
-        PostgreSQLTableSource expectedSource =
-                new PostgreSQLTableSource(
-                        SCHEMA,
-                        5444,
-                        MY_LOCALHOST,
-                        MY_DATABASE,
-                        MY_SCHEMA,
-                        MY_TABLE,
-                        MY_USERNAME,
-                        MY_PASSWORD,
-                        "wal2json",
-                        MY_SLOT_NAME,
-                        DebeziumChangelogMode.UPSERT,
-                        dbzProperties,
-                        false,
-                        SCAN_INCREMENTAL_SNAPSHOT_CHUNK_SIZE.defaultValue(),
-                        CHUNK_META_GROUP_SIZE.defaultValue(),
-                        SCAN_SNAPSHOT_FETCH_SIZE.defaultValue(),
-                        CONNECT_TIMEOUT.defaultValue(),
-                        CONNECT_MAX_RETRIES.defaultValue(),
-                        CONNECTION_POOL_SIZE.defaultValue(),
-                        SPLIT_KEY_EVEN_DISTRIBUTION_FACTOR_UPPER_BOUND.defaultValue(),
-                        SPLIT_KEY_EVEN_DISTRIBUTION_FACTOR_LOWER_BOUND.defaultValue(),
-                        HEARTBEAT_INTERVAL.defaultValue(),
-                        StartupOptions.initial(),
-                        null,
-                        SCAN_INCREMENTAL_CLOSE_IDLE_READER_ENABLED_DEFAULT,
-                        true,
-                        true,
-                        SCAN_LSN_COMMIT_CHECKPOINTS_DELAY.defaultValue(),
-                        SCAN_INCREMENTAL_SNAPSHOT_UNBOUNDED_CHUNK_FIRST_ENABLED.defaultValue(),
-                        true,
-                        SCAN_INCLUDE_PARTITIONED_TABLES_ENABLED.defaultValue());
-        Assertions.assertThat(actualSource).isEqualTo(expectedSource);
-    }
-
-    @Test
-    void testMetadataColumns() {
-        Map<String, String> properties = getAllOptions();
-
-        // validation for source
-        DynamicTableSource actualSource = createTableSource(SCHEMA_WITH_METADATA, properties);
-        PostgreSQLTableSource postgreSQLTableSource = (PostgreSQLTableSource) actualSource;
-        postgreSQLTableSource.applyReadableMetadata(
-                Arrays.asList("row_kind", "op_ts", "database_name", "schema_name", "table_name"),
-                SCHEMA_WITH_METADATA.toSourceRowDataType());
-        actualSource = postgreSQLTableSource.copy();
-        PostgreSQLTableSource expectedSource =
-                new PostgreSQLTableSource(
-                        ResolvedSchemaUtils.getPhysicalSchema(SCHEMA_WITH_METADATA),
-                        5432,
-                        MY_LOCALHOST,
-                        MY_DATABASE,
-                        MY_SCHEMA,
-                        MY_TABLE,
-                        MY_USERNAME,
-                        MY_PASSWORD,
-                        "decoderbufs",
-                        MY_SLOT_NAME,
-                        DebeziumChangelogMode.ALL,
-                        new Properties(),
-                        false,
-                        SCAN_INCREMENTAL_SNAPSHOT_CHUNK_SIZE.defaultValue(),
-                        CHUNK_META_GROUP_SIZE.defaultValue(),
-                        SCAN_SNAPSHOT_FETCH_SIZE.defaultValue(),
-                        CONNECT_TIMEOUT.defaultValue(),
-                        CONNECT_MAX_RETRIES.defaultValue(),
-                        CONNECTION_POOL_SIZE.defaultValue(),
-                        SPLIT_KEY_EVEN_DISTRIBUTION_FACTOR_UPPER_BOUND.defaultValue(),
-                        SPLIT_KEY_EVEN_DISTRIBUTION_FACTOR_LOWER_BOUND.defaultValue(),
-                        HEARTBEAT_INTERVAL.defaultValue(),
-                        StartupOptions.initial(),
-                        null,
-                        SCAN_INCREMENTAL_CLOSE_IDLE_READER_ENABLED_DEFAULT,
-                        SCAN_INCREMENTAL_SNAPSHOT_BACKFILL_SKIP.defaultValue(),
-                        SCAN_NEWLY_ADDED_TABLE_ENABLED.defaultValue(),
-                        SCAN_LSN_COMMIT_CHECKPOINTS_DELAY.defaultValue(),
-                        SCAN_INCREMENTAL_SNAPSHOT_UNBOUNDED_CHUNK_FIRST_ENABLED.defaultValue(),
-                        SCAN_READ_CHANGELOG_AS_APPEND_ONLY_ENABLED.defaultValue(),
-                        SCAN_INCLUDE_PARTITIONED_TABLES_ENABLED.defaultValue());
-        expectedSource.producedDataType = SCHEMA_WITH_METADATA.toSourceRowDataType();
-        expectedSource.metadataKeys =
-                Arrays.asList("row_kind", "op_ts", "database_name", "schema_name", "table_name");
-
-        Assertions.assertThat(actualSource).isEqualTo(expectedSource);
-
-        ScanTableSource.ScanRuntimeProvider provider =
-                postgreSQLTableSource.getScanRuntimeProvider(ScanRuntimeProviderContext.INSTANCE);
-        DebeziumSourceFunction<RowData> debeziumSourceFunction =
-                (DebeziumSourceFunction<RowData>)
-                        ((SourceFunctionProvider) provider).createSourceFunction();
-        assertProducedTypeOfSourceFunction(debeziumSourceFunction, expectedSource.producedDataType);
-    }
+            SourceOptions.SCAN_INCREMENTAL_CLOSE_IDLE_READER_ENABLED.defaultValue();
 
     @Test
     void testEnableParallelReadSource() {
@@ -293,25 +122,26 @@ class PostgreSQLTableFactoryTest {
                         MY_SLOT_NAME,
                         DebeziumChangelogMode.ALL,
                         PROPERTIES,
-                        true,
                         8000,
-                        CHUNK_META_GROUP_SIZE.defaultValue(),
+                        SourceOptions.CHUNK_META_GROUP_SIZE.defaultValue(),
                         100,
                         Duration.ofSeconds(45),
-                        CONNECT_MAX_RETRIES.defaultValue(),
-                        CONNECTION_POOL_SIZE.defaultValue(),
-                        SPLIT_KEY_EVEN_DISTRIBUTION_FACTOR_UPPER_BOUND.defaultValue(),
-                        SPLIT_KEY_EVEN_DISTRIBUTION_FACTOR_LOWER_BOUND.defaultValue(),
-                        HEARTBEAT_INTERVAL.defaultValue(),
+                        JdbcSourceOptions.CONNECT_MAX_RETRIES.defaultValue(),
+                        JdbcSourceOptions.CONNECTION_POOL_SIZE.defaultValue(),
+                        SourceOptions.SPLIT_KEY_EVEN_DISTRIBUTION_FACTOR_UPPER_BOUND.defaultValue(),
+                        SourceOptions.SPLIT_KEY_EVEN_DISTRIBUTION_FACTOR_LOWER_BOUND.defaultValue(),
+                        PostgresSourceOptions.HEARTBEAT_INTERVAL.defaultValue(),
                         StartupOptions.initial(),
                         null,
                         SCAN_INCREMENTAL_CLOSE_IDLE_READER_ENABLED_DEFAULT,
-                        SCAN_INCREMENTAL_SNAPSHOT_BACKFILL_SKIP.defaultValue(),
-                        SCAN_NEWLY_ADDED_TABLE_ENABLED.defaultValue(),
-                        SCAN_LSN_COMMIT_CHECKPOINTS_DELAY.defaultValue(),
-                        SCAN_INCREMENTAL_SNAPSHOT_UNBOUNDED_CHUNK_FIRST_ENABLED.defaultValue(),
-                        SCAN_READ_CHANGELOG_AS_APPEND_ONLY_ENABLED.defaultValue(),
-                        SCAN_INCLUDE_PARTITIONED_TABLES_ENABLED.defaultValue());
+                        SourceOptions.SCAN_INCREMENTAL_SNAPSHOT_BACKFILL_SKIP.defaultValue(),
+                        SourceOptions.SCAN_NEWLY_ADDED_TABLE_ENABLED.defaultValue(),
+                        PostgresSourceOptions.SCAN_LSN_COMMIT_CHECKPOINTS_DELAY.defaultValue(),
+                        SourceOptions.SCAN_INCREMENTAL_SNAPSHOT_UNBOUNDED_CHUNK_FIRST_ENABLED
+                                .defaultValue(),
+                        SourceOptions.SCAN_READ_CHANGELOG_AS_APPEND_ONLY_ENABLED.defaultValue(),
+                        PostgresSourceOptions.SCAN_INCLUDE_PARTITIONED_TABLES_ENABLED
+                                .defaultValue());
         Assertions.assertThat(actualSource).isEqualTo(expectedSource);
     }
 
@@ -340,25 +170,26 @@ class PostgreSQLTableFactoryTest {
                         MY_SLOT_NAME,
                         DebeziumChangelogMode.ALL,
                         PROPERTIES,
-                        true,
                         8000,
-                        CHUNK_META_GROUP_SIZE.defaultValue(),
+                        SourceOptions.CHUNK_META_GROUP_SIZE.defaultValue(),
                         100,
                         Duration.ofSeconds(45),
-                        CONNECT_MAX_RETRIES.defaultValue(),
-                        CONNECTION_POOL_SIZE.defaultValue(),
-                        SPLIT_KEY_EVEN_DISTRIBUTION_FACTOR_UPPER_BOUND.defaultValue(),
-                        SPLIT_KEY_EVEN_DISTRIBUTION_FACTOR_LOWER_BOUND.defaultValue(),
-                        HEARTBEAT_INTERVAL.defaultValue(),
+                        JdbcSourceOptions.CONNECT_MAX_RETRIES.defaultValue(),
+                        JdbcSourceOptions.CONNECTION_POOL_SIZE.defaultValue(),
+                        SourceOptions.SPLIT_KEY_EVEN_DISTRIBUTION_FACTOR_UPPER_BOUND.defaultValue(),
+                        SourceOptions.SPLIT_KEY_EVEN_DISTRIBUTION_FACTOR_LOWER_BOUND.defaultValue(),
+                        PostgresSourceOptions.HEARTBEAT_INTERVAL.defaultValue(),
                         StartupOptions.latest(),
                         null,
                         SCAN_INCREMENTAL_CLOSE_IDLE_READER_ENABLED_DEFAULT,
-                        SCAN_INCREMENTAL_SNAPSHOT_BACKFILL_SKIP.defaultValue(),
-                        SCAN_NEWLY_ADDED_TABLE_ENABLED.defaultValue(),
-                        SCAN_LSN_COMMIT_CHECKPOINTS_DELAY.defaultValue(),
-                        SCAN_INCREMENTAL_SNAPSHOT_UNBOUNDED_CHUNK_FIRST_ENABLED.defaultValue(),
-                        SCAN_READ_CHANGELOG_AS_APPEND_ONLY_ENABLED.defaultValue(),
-                        SCAN_INCLUDE_PARTITIONED_TABLES_ENABLED.defaultValue());
+                        SourceOptions.SCAN_INCREMENTAL_SNAPSHOT_BACKFILL_SKIP.defaultValue(),
+                        SourceOptions.SCAN_NEWLY_ADDED_TABLE_ENABLED.defaultValue(),
+                        PostgresSourceOptions.SCAN_LSN_COMMIT_CHECKPOINTS_DELAY.defaultValue(),
+                        SourceOptions.SCAN_INCREMENTAL_SNAPSHOT_UNBOUNDED_CHUNK_FIRST_ENABLED
+                                .defaultValue(),
+                        SourceOptions.SCAN_READ_CHANGELOG_AS_APPEND_ONLY_ENABLED.defaultValue(),
+                        PostgresSourceOptions.SCAN_INCLUDE_PARTITIONED_TABLES_ENABLED
+                                .defaultValue());
         Assertions.assertThat(actualSource).isEqualTo(expectedSource);
     }
 
@@ -427,16 +258,18 @@ class PostgreSQLTableFactoryTest {
 
     private static DynamicTableSource createTableSource(
             ResolvedSchema schema, Map<String, String> options) {
-        return FactoryUtil.createTableSource(
+        return FactoryUtil.createDynamicTableSource(
                 null,
                 ObjectIdentifier.of("default", "default", "t1"),
                 new ResolvedCatalogTable(
-                        CatalogTable.of(
-                                Schema.newBuilder().fromResolvedSchema(schema).build(),
-                                "mock source",
-                                new ArrayList<>(),
-                                options),
+                        CatalogTable.newBuilder()
+                                .schema(Schema.newBuilder().fromResolvedSchema(schema).build())
+                                .comment("mock source")
+                                .partitionKeys(new ArrayList<>())
+                                .options(options)
+                                .build(),
                         schema),
+                new HashMap<>(),
                 new Configuration(),
                 PostgreSQLTableFactoryTest.class.getClassLoader(),
                 false);

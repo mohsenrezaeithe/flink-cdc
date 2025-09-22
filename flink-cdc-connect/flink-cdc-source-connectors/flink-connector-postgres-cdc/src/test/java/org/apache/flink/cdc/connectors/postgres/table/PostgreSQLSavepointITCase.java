@@ -17,12 +17,13 @@
 
 package org.apache.flink.cdc.connectors.postgres.table;
 
-import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.cdc.connectors.postgres.PostgresTestBase;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.RestartStrategyOptions;
+import org.apache.flink.configuration.StateRecoveryOptions;
 import org.apache.flink.core.execution.JobClient;
+import org.apache.flink.core.execution.SavepointFormatType;
 import org.apache.flink.runtime.checkpoint.CheckpointException;
-import org.apache.flink.runtime.jobgraph.SavepointConfigOptions;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.api.TableResult;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
@@ -34,7 +35,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-import java.lang.reflect.Field;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.Statement;
@@ -110,7 +110,7 @@ class PostgreSQLSavepointITCase extends PostgresTestBase {
 
         // async submit job
         TableResult result = tEnv.executeSql("INSERT INTO sink SELECT * FROM debezium_source");
-        JobClient jobClient = result.getJobClient().get();
+        JobClient jobClient = result.getJobClient().orElseThrow();
         try (Connection connection = getJdbcConnection(POSTGRES_CONTAINER);
                 Statement statement = connection.createStatement()) {
             statement.execute(
@@ -162,7 +162,7 @@ class PostgreSQLSavepointITCase extends PostgresTestBase {
 
         // async submit job
         result = tEnv.executeSql("INSERT INTO sink SELECT * FROM debezium_source");
-        jobClient = result.getJobClient().get();
+        jobClient = result.getJobClient().orElseThrow();
 
         waitForSinkSize("sink", 15);
 
@@ -188,23 +188,19 @@ class PostgreSQLSavepointITCase extends PostgresTestBase {
     }
 
     private StreamExecutionEnvironment getStreamExecutionEnvironment(
-            String finishedSavePointPath, int parallelism) throws Exception {
-        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+            String finishedSavePointPath, int parallelism) {
+        final Configuration executionConfig = new Configuration();
         if (finishedSavePointPath != null) {
             // restore from savepoint
-            // hack for test to visit protected TestStreamEnvironment#getConfiguration() method
-            ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
-            Class<?> clazz =
-                    classLoader.loadClass(
-                            "org.apache.flink.streaming.api.environment.StreamExecutionEnvironment");
-            Field field = clazz.getDeclaredField("configuration");
-            field.setAccessible(true);
-            Configuration configuration = (Configuration) field.get(env);
-            configuration.setString(SavepointConfigOptions.SAVEPOINT_PATH, finishedSavePointPath);
+            executionConfig.set(StateRecoveryOptions.SAVEPOINT_PATH, finishedSavePointPath);
         }
+        executionConfig.set(
+                RestartStrategyOptions.RESTART_STRATEGY,
+                RestartStrategyOptions.RestartStrategyType.NO_RESTART_STRATEGY.getMainValue());
+        StreamExecutionEnvironment env =
+                StreamExecutionEnvironment.getExecutionEnvironment(executionConfig);
         env.setParallelism(parallelism);
         env.enableCheckpointing(200L);
-        env.setRestartStrategy(RestartStrategies.noRestart());
         return env;
     }
 
@@ -214,7 +210,9 @@ class PostgreSQLSavepointITCase extends PostgresTestBase {
         // retry 600 times, it takes 100 milliseconds per time, at most retry 1 minute
         while (retryTimes < 600) {
             try {
-                return jobClient.triggerSavepoint(savepointDirectory).get();
+                return jobClient
+                        .triggerSavepoint(savepointDirectory, SavepointFormatType.DEFAULT)
+                        .get();
             } catch (Exception e) {
                 Optional<CheckpointException> exception =
                         ExceptionUtils.findThrowable(e, CheckpointException.class);

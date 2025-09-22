@@ -18,7 +18,6 @@
 package org.apache.flink.cdc.connectors.mysql.source;
 
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
-import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.cdc.connectors.mysql.debezium.DebeziumUtils;
 import org.apache.flink.cdc.connectors.mysql.table.MySqlReadableMetadata;
@@ -26,9 +25,11 @@ import org.apache.flink.cdc.connectors.mysql.testutils.UniqueDatabase;
 import org.apache.flink.cdc.debezium.table.MetadataConverter;
 import org.apache.flink.cdc.debezium.table.RowDataDebeziumDeserializeSchema;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.RestartStrategyOptions;
+import org.apache.flink.configuration.StateRecoveryOptions;
 import org.apache.flink.core.execution.JobClient;
+import org.apache.flink.core.execution.SavepointFormatType;
 import org.apache.flink.runtime.checkpoint.CheckpointException;
-import org.apache.flink.runtime.jobgraph.SavepointConfigOptions;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.DataStreamSource;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
@@ -46,6 +47,7 @@ import org.apache.flink.table.types.logical.RowType;
 import org.apache.flink.table.types.utils.TypeConversions;
 import org.apache.flink.types.RowUtils;
 import org.apache.flink.util.ExceptionUtils;
+import org.apache.flink.util.Preconditions;
 
 import io.debezium.connector.mysql.MySqlConnection;
 import io.debezium.jdbc.JdbcConnection;
@@ -58,6 +60,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
 import java.sql.SQLException;
+import java.time.Duration;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -76,10 +79,6 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-
-import static java.lang.String.format;
-import static org.apache.flink.api.common.restartstrategy.RestartStrategies.noRestart;
-import static org.apache.flink.util.Preconditions.checkState;
 
 /** IT tests to cover various newly added tables during capture process. */
 @Timeout(value = 300, unit = TimeUnit.SECONDS)
@@ -102,9 +101,10 @@ class NewlyAddedTableITCase extends MySqlSourceTestBase {
             // prepare initial data for given table
             String tableId = customDatabase.getDatabaseName() + ".produce_binlog_table";
             connection.execute(
-                    format("CREATE TABLE %s ( id BIGINT PRIMARY KEY, cnt BIGINT);", tableId));
+                    String.format(
+                            "CREATE TABLE %s ( id BIGINT PRIMARY KEY, cnt BIGINT);", tableId));
             connection.execute(
-                    format("INSERT INTO  %s VALUES (0, 100), (1, 101), (2, 102);", tableId));
+                    String.format("INSERT INTO  %s VALUES (0, 100), (1, 101), (2, 102);", tableId));
             connection.commit();
 
             // mock continuous binlog during the newly added table capturing process
@@ -112,7 +112,8 @@ class NewlyAddedTableITCase extends MySqlSourceTestBase {
                     () -> {
                         try {
                             connection.execute(
-                                    format("UPDATE  %s SET  cnt = cnt +1 WHERE id < 2;", tableId));
+                                    String.format(
+                                            "UPDATE  %s SET  cnt = cnt +1 WHERE id < 2;", tableId));
                             connection.commit();
                         } catch (SQLException e) {
                             e.printStackTrace();
@@ -448,35 +449,62 @@ class NewlyAddedTableITCase extends MySqlSourceTestBase {
                             "+I[110, user_10, Shanghai, 123567891234, customers_even_dist]");
             List<String> expectedCustomersResult =
                     Arrays.asList(
-                            format("+I[1011, user_12, Shanghai, 123567891234, %s]", changedTable),
-                            format("+I[1012, user_13, Shanghai, 123567891234, %s]", changedTable),
-                            format("+I[1009, user_10, Shanghai, 123567891234, %s]", changedTable),
-                            format("+I[1010, user_11, Shanghai, 123567891234, %s]", changedTable),
-                            format("+I[1015, user_16, Shanghai, 123567891234, %s]", changedTable),
-                            format("+I[1016, user_17, Shanghai, 123567891234, %s]", changedTable),
-                            format("+I[1013, user_14, Shanghai, 123567891234, %s]", changedTable),
-                            format("+I[118, user_7, Shanghai, 123567891234, %s]", changedTable),
-                            format("+I[1014, user_15, Shanghai, 123567891234, %s]", changedTable),
-                            format("+I[111, user_6, Shanghai, 123567891234, %s]", changedTable),
-                            format("+I[2000, user_21, Shanghai, 123567891234, %s]", changedTable),
-                            format("+I[109, user_4, Shanghai, 123567891234, %s]", changedTable),
-                            format("+I[110, user_5, Shanghai, 123567891234, %s]", changedTable),
-                            format("+I[103, user_3, Shanghai, 123567891234, %s]", changedTable),
-                            format("+I[101, user_1, Shanghai, 123567891234, %s]", changedTable),
-                            format("+I[102, user_2, Shanghai, 123567891234, %s]", changedTable),
-                            format("+I[123, user_9, Shanghai, 123567891234, %s]", changedTable),
-                            format("+I[1019, user_20, Shanghai, 123567891234, %s]", changedTable),
-                            format("+I[121, user_8, Shanghai, 123567891234, %s]", changedTable),
-                            format("+I[1017, user_18, Shanghai, 123567891234, %s]", changedTable),
-                            format("+I[1018, user_19, Shanghai, 123567891234, %s]", changedTable));
+                            String.format(
+                                    "+I[1011, user_12, Shanghai, 123567891234, %s]", changedTable),
+                            String.format(
+                                    "+I[1012, user_13, Shanghai, 123567891234, %s]", changedTable),
+                            String.format(
+                                    "+I[1009, user_10, Shanghai, 123567891234, %s]", changedTable),
+                            String.format(
+                                    "+I[1010, user_11, Shanghai, 123567891234, %s]", changedTable),
+                            String.format(
+                                    "+I[1015, user_16, Shanghai, 123567891234, %s]", changedTable),
+                            String.format(
+                                    "+I[1016, user_17, Shanghai, 123567891234, %s]", changedTable),
+                            String.format(
+                                    "+I[1013, user_14, Shanghai, 123567891234, %s]", changedTable),
+                            String.format(
+                                    "+I[118, user_7, Shanghai, 123567891234, %s]", changedTable),
+                            String.format(
+                                    "+I[1014, user_15, Shanghai, 123567891234, %s]", changedTable),
+                            String.format(
+                                    "+I[111, user_6, Shanghai, 123567891234, %s]", changedTable),
+                            String.format(
+                                    "+I[2000, user_21, Shanghai, 123567891234, %s]", changedTable),
+                            String.format(
+                                    "+I[109, user_4, Shanghai, 123567891234, %s]", changedTable),
+                            String.format(
+                                    "+I[110, user_5, Shanghai, 123567891234, %s]", changedTable),
+                            String.format(
+                                    "+I[103, user_3, Shanghai, 123567891234, %s]", changedTable),
+                            String.format(
+                                    "+I[101, user_1, Shanghai, 123567891234, %s]", changedTable),
+                            String.format(
+                                    "+I[102, user_2, Shanghai, 123567891234, %s]", changedTable),
+                            String.format(
+                                    "+I[123, user_9, Shanghai, 123567891234, %s]", changedTable),
+                            String.format(
+                                    "+I[1019, user_20, Shanghai, 123567891234, %s]", changedTable),
+                            String.format(
+                                    "+I[121, user_8, Shanghai, 123567891234, %s]", changedTable),
+                            String.format(
+                                    "+I[1017, user_18, Shanghai, 123567891234, %s]", changedTable),
+                            String.format(
+                                    "+I[1018, user_19, Shanghai, 123567891234, %s]", changedTable));
             List<String> expectedBinlogResult =
                     Arrays.asList(
-                            format("-U[103, user_3, Shanghai, 123567891234, %s]", changedTable),
-                            format("+U[103, user_3, Update1, 123567891234, %s]", changedTable),
-                            format("-D[102, user_2, Shanghai, 123567891234, %s]", changedTable),
-                            format("+I[102, user_2, Insert1, 123567891234, %s]", changedTable),
-                            format("-U[103, user_3, Update1, 123567891234, %s]", changedTable),
-                            format("+U[103, user_3, Update2, 123567891234, %s]", changedTable));
+                            String.format(
+                                    "-U[103, user_3, Shanghai, 123567891234, %s]", changedTable),
+                            String.format(
+                                    "+U[103, user_3, Update1, 123567891234, %s]", changedTable),
+                            String.format(
+                                    "-D[102, user_2, Shanghai, 123567891234, %s]", changedTable),
+                            String.format(
+                                    "+I[102, user_2, Insert1, 123567891234, %s]", changedTable),
+                            String.format(
+                                    "-U[103, user_3, Update1, 123567891234, %s]", changedTable),
+                            String.format(
+                                    "+U[103, user_3, Update2, 123567891234, %s]", changedTable));
 
             List<String> expectedSnapshotResult =
                     i == 0
@@ -518,7 +546,8 @@ class NewlyAddedTableITCase extends MySqlSourceTestBase {
     /** Add a collect sink in the job. */
     protected CollectResultIterator<RowData> addCollectSink(DataStream<RowData> stream) {
         TypeSerializer<RowData> serializer =
-                stream.getType().createSerializer(stream.getExecutionConfig());
+                stream.getType()
+                        .createSerializer(stream.getExecutionConfig().getSerializerConfig());
         String accumulatorName = "dataStreamCollect_" + UUID.randomUUID();
         CollectSinkOperatorFactory<RowData> factory =
                 new CollectSinkOperatorFactory<>(serializer, accumulatorName);
@@ -527,14 +556,12 @@ class NewlyAddedTableITCase extends MySqlSourceTestBase {
         CollectStreamSink<RowData> sink = new CollectStreamSink<>(stream, factory);
         sink.name("Data stream collect sink");
         stream.getExecutionEnvironment().addOperator(sink.getTransformation());
-        CollectResultIterator<RowData> iterator =
-                new CollectResultIterator(
-                        operator.getOperatorIdFuture(),
-                        serializer,
-                        accumulatorName,
-                        stream.getExecutionEnvironment().getCheckpointConfig(),
-                        10000L);
-        return iterator;
+        return new CollectResultIterator<>(
+                operator.getOperatorID().toString(),
+                serializer,
+                accumulatorName,
+                stream.getExecutionEnvironment().getCheckpointConfig(),
+                10000L);
     }
 
     private List<String> fetchRowData(Iterator<RowData> iter, int size) {
@@ -589,13 +616,13 @@ class NewlyAddedTableITCase extends MySqlSourceTestBase {
             String cityName = table.split("_")[1];
             fetchedDataList.addAll(
                     Arrays.asList(
-                            format(
+                            String.format(
                                     "+I[%s, 416874195632735147, China, %s, %s West Town address 1]",
                                     table, cityName, cityName),
-                            format(
+                            String.format(
                                     "+I[%s, 416927583791428523, China, %s, %s West Town address 2]",
                                     table, cityName, cityName),
-                            format(
+                            String.format(
                                     "+I[%s, 417022095255614379, China, %s, %s West Town address 3]",
                                     table, cityName, cityName)));
         }
@@ -623,7 +650,7 @@ class NewlyAddedTableITCase extends MySqlSourceTestBase {
                             + " 'sink-insert-only' = 'false'"
                             + ")");
             TableResult tableResult = tEnv.executeSql("insert into sink select * from address");
-            JobClient jobClient = tableResult.getJobClient().get();
+            JobClient jobClient = tableResult.getJobClient().orElseThrow();
 
             // trigger failover after some snapshot data read finished
             if (failoverPhase == FailoverPhase.SNAPSHOT) {
@@ -648,9 +675,8 @@ class NewlyAddedTableITCase extends MySqlSourceTestBase {
         // test removing table one by one, note that there should be at least one table remaining
         for (int round = 0; round < captureAddressTables.length - 1; round++) {
             String[] captureTablesThisRound =
-                    Arrays.asList(captureAddressTables)
-                            .subList(round + 1, captureAddressTables.length)
-                            .toArray(new String[0]);
+                    Arrays.copyOfRange(
+                            captureAddressTables, round + 1, captureAddressTables.length);
 
             StreamExecutionEnvironment env =
                     getStreamExecutionEnvironment(finishedSavePointPath, parallelism);
@@ -672,7 +698,7 @@ class NewlyAddedTableITCase extends MySqlSourceTestBase {
                             + " 'sink-insert-only' = 'false'"
                             + ")");
             TableResult tableResult = tEnv.executeSql("insert into sink select * from address");
-            JobClient jobClient = tableResult.getJobClient().get();
+            JobClient jobClient = tableResult.getJobClient().orElseThrow();
 
             waitForSinkSize("sink", fetchedDataList.size());
             assertEqualsInAnyOrder(
@@ -692,10 +718,10 @@ class NewlyAddedTableITCase extends MySqlSourceTestBase {
                 String cityName = tableName.split("_")[1];
                 expectedBinlogDataThisRound.addAll(
                         Arrays.asList(
-                                format(
+                                String.format(
                                         "+U[%s, 416874195632735147, CHINA_%s, %s, %s West Town address 1]",
                                         tableName, round, cityName, cityName),
-                                format(
+                                String.format(
                                         "+I[%s, %d, China, %s, %s West Town address 4]",
                                         tableName,
                                         417022095255614380L + round,
@@ -759,10 +785,7 @@ class NewlyAddedTableITCase extends MySqlSourceTestBase {
         String finishedSavePointPath = null;
         List<String> fetchedDataList = new ArrayList<>();
         for (int round = 0; round < captureAddressTables.length; round++) {
-            String[] captureTablesThisRound =
-                    Arrays.asList(captureAddressTables)
-                            .subList(0, round + 1)
-                            .toArray(new String[0]);
+            String[] captureTablesThisRound = Arrays.copyOf(captureAddressTables, round + 1);
             String newlyAddedTable = captureAddressTables[round];
             if (makeBinlogBeforeCapture) {
                 makeBinlogBeforeCaptureForAddressTable(getConnection(), newlyAddedTable);
@@ -787,34 +810,34 @@ class NewlyAddedTableITCase extends MySqlSourceTestBase {
                             + " 'sink-insert-only' = 'false'"
                             + ")");
             TableResult tableResult = tEnv.executeSql("insert into sink select * from address");
-            JobClient jobClient = tableResult.getJobClient().get();
+            JobClient jobClient = tableResult.getJobClient().orElseThrow();
 
             // step 2: assert fetched snapshot data in this round
             String cityName = newlyAddedTable.split("_")[1];
             List<String> expectedSnapshotDataThisRound =
                     Arrays.asList(
-                            format(
+                            String.format(
                                     "+I[%s, 416874195632735147, China, %s, %s West Town address 1]",
                                     newlyAddedTable, cityName, cityName),
-                            format(
+                            String.format(
                                     "+I[%s, 416927583791428523, China, %s, %s West Town address 2]",
                                     newlyAddedTable, cityName, cityName),
-                            format(
+                            String.format(
                                     "+I[%s, 417022095255614379, China, %s, %s West Town address 3]",
                                     newlyAddedTable, cityName, cityName));
             if (makeBinlogBeforeCapture) {
                 expectedSnapshotDataThisRound =
                         Arrays.asList(
-                                format(
+                                String.format(
                                         "+I[%s, 416874195632735147, China, %s, %s West Town address 1]",
                                         newlyAddedTable, cityName, cityName),
-                                format(
+                                String.format(
                                         "+I[%s, 416927583791428523, China, %s, %s West Town address 2]",
                                         newlyAddedTable, cityName, cityName),
-                                format(
+                                String.format(
                                         "+I[%s, 417022095255614379, China, %s, %s West Town address 3]",
                                         newlyAddedTable, cityName, cityName),
-                                format(
+                                String.format(
                                         "+I[%s, 417022095255614381, China, %s, %s West Town address 5]",
                                         newlyAddedTable, cityName, cityName));
             }
@@ -853,17 +876,17 @@ class NewlyAddedTableITCase extends MySqlSourceTestBase {
                             .filter(
                                     r ->
                                             !r.contains(
-                                                    format(
+                                                    String.format(
                                                             "%s, 416874195632735147",
                                                             newlyAddedTable)))
                             .collect(Collectors.toList());
             List<String> expectedBinlogUpsertDataThisRound =
                     Arrays.asList(
                             // add the new data with id 416874195632735147
-                            format(
+                            String.format(
                                     "+I[%s, 416874195632735147, CHINA, %s, %s West Town address 1]",
                                     newlyAddedTable, cityName, cityName),
-                            format(
+                            String.format(
                                     "+I[%s, 417022095255614380, China, %s, %s West Town address 4]",
                                     newlyAddedTable, cityName, cityName));
 
@@ -887,7 +910,7 @@ class NewlyAddedTableITCase extends MySqlSourceTestBase {
 
     private String getCreateTableStatement(
             Map<String, String> otherOptions, String... captureTableNames) {
-        return format(
+        return String.format(
                 "CREATE TABLE address ("
                         + " table_name STRING METADATA VIRTUAL,"
                         + " id BIGINT NOT NULL,"
@@ -931,16 +954,26 @@ class NewlyAddedTableITCase extends MySqlSourceTestBase {
     }
 
     private StreamExecutionEnvironment getStreamExecutionEnvironment(
-            String finishedSavePointPath, int parallelism) throws Exception {
-        Configuration configuration = new Configuration();
+            String finishedSavePointPath, int parallelism) {
+        return getStreamExecutionEnvironment(
+                finishedSavePointPath, parallelism, new Configuration());
+    }
+
+    private StreamExecutionEnvironment getStreamExecutionEnvironment(
+            String finishedSavePointPath, int parallelism, Configuration configs) {
         if (finishedSavePointPath != null) {
-            configuration.setString(SavepointConfigOptions.SAVEPOINT_PATH, finishedSavePointPath);
+            configs.set(StateRecoveryOptions.SAVEPOINT_PATH, finishedSavePointPath);
         }
+        configs.set(
+                RestartStrategyOptions.RESTART_STRATEGY,
+                RestartStrategyOptions.RestartStrategyType.FIXED_DELAY.getMainValue());
+        configs.set(RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_ATTEMPTS, 3);
+        configs.set(
+                RestartStrategyOptions.RESTART_STRATEGY_FIXED_DELAY_DELAY, Duration.ofSeconds(100));
         StreamExecutionEnvironment env =
-                StreamExecutionEnvironment.getExecutionEnvironment(configuration);
+                StreamExecutionEnvironment.getExecutionEnvironment(configs);
         env.setParallelism(parallelism);
         env.enableCheckpointing(200L);
-        env.setRestartStrategy(RestartStrategies.fixedDelayRestart(3, 100L));
         return env;
     }
 
@@ -950,7 +983,9 @@ class NewlyAddedTableITCase extends MySqlSourceTestBase {
         // retry 600 times, it takes 100 milliseconds per time, at most retry 1 minute
         while (retryTimes < 600) {
             try {
-                return jobClient.triggerSavepoint(savepointDirectory).get();
+                return jobClient
+                        .triggerSavepoint(savepointDirectory, SavepointFormatType.DEFAULT)
+                        .get();
             } catch (Exception e) {
                 Optional<CheckpointException> exception =
                         ExceptionUtils.findThrowable(e, CheckpointException.class);
@@ -967,12 +1002,12 @@ class NewlyAddedTableITCase extends MySqlSourceTestBase {
     }
 
     private String getTableNameRegex(String[] captureCustomerTables) {
-        checkState(captureCustomerTables.length > 0);
+        Preconditions.checkState(captureCustomerTables.length > 0);
         if (captureCustomerTables.length == 1) {
             return captureCustomerTables[0];
         } else {
             // pattern that matches multiple tables
-            return format("(%s)", StringUtils.join(captureCustomerTables, "|"));
+            return String.format("(%s)", StringUtils.join(captureCustomerTables, "|"));
         }
     }
 
@@ -991,7 +1026,7 @@ class NewlyAddedTableITCase extends MySqlSourceTestBase {
 
     private void initialAddressTables(JdbcConnection connection, String[] addressTables)
             throws SQLException {
-        try {
+        try (connection) {
             connection.setAutoCommit(false);
             for (String tableName : addressTables) {
                 // make initial data for given table
@@ -1007,7 +1042,7 @@ class NewlyAddedTableITCase extends MySqlSourceTestBase {
                                 + "  detail_address VARCHAR(1024)"
                                 + ");");
                 connection.execute(
-                        format(
+                        String.format(
                                 "INSERT INTO  %s "
                                         + "VALUES (416874195632735147, 'China', '%s', '%s West Town address 1'),"
                                         + "       (416927583791428523, 'China', '%s', '%s West Town address 2'),"
@@ -1016,58 +1051,50 @@ class NewlyAddedTableITCase extends MySqlSourceTestBase {
                                 cityName));
             }
             connection.commit();
-        } finally {
-            connection.close();
         }
     }
 
     private void makeFirstPartBinlogForAddressTable(JdbcConnection connection, String tableName)
             throws SQLException {
-        try {
+        try (connection) {
             connection.setAutoCommit(false);
             // make binlog events for the first split
             String tableId = customDatabase.getDatabaseName() + "." + tableName;
             connection.execute(
-                    format(
+                    String.format(
                             "UPDATE %s SET COUNTRY = 'CHINA' where id = 416874195632735147",
                             tableId));
             connection.commit();
-        } finally {
-            connection.close();
         }
     }
 
     private void makeSecondPartBinlogForAddressTable(JdbcConnection connection, String tableName)
             throws SQLException {
-        try {
+        try (connection) {
             connection.setAutoCommit(false);
             // make binlog events for the second split
             String tableId = customDatabase.getDatabaseName() + "." + tableName;
             String cityName = tableName.split("_")[1];
             connection.execute(
-                    format(
+                    String.format(
                             "INSERT INTO %s VALUES(417022095255614380, 'China','%s','%s West Town address 4')",
                             tableId, cityName, cityName));
             connection.commit();
-        } finally {
-            connection.close();
         }
     }
 
     private void makeBinlogBeforeCaptureForAddressTable(JdbcConnection connection, String tableName)
             throws SQLException {
-        try {
+        try (connection) {
             connection.setAutoCommit(false);
             // make binlog before the capture of the table
             String tableId = customDatabase.getDatabaseName() + "." + tableName;
             String cityName = tableName.split("_")[1];
             connection.execute(
-                    format(
+                    String.format(
                             "INSERT INTO %s VALUES(417022095255614381, 'China','%s','%s West Town address 5')",
                             tableId, cityName, cityName));
             connection.commit();
-        } finally {
-            connection.close();
         }
     }
 
@@ -1085,22 +1112,20 @@ class NewlyAddedTableITCase extends MySqlSourceTestBase {
 
     private void makeBinlogForAddressTable(JdbcConnection connection, String tableName, int round)
             throws SQLException {
-        try {
+        try (connection) {
             connection.setAutoCommit(false);
             // make binlog events for the first split
             String tableId = customDatabase.getDatabaseName() + "." + tableName;
             String cityName = tableName.split("_")[1];
             connection.execute(
-                    format(
+                    String.format(
                             "UPDATE %s SET COUNTRY = 'CHINA_%s' where id = 416874195632735147",
                             tableId, round));
             connection.execute(
-                    format(
+                    String.format(
                             "INSERT INTO %s VALUES(%d, 'China','%s','%s West Town address 4')",
                             tableId, 417022095255614380L + round, cityName, cityName));
             connection.commit();
-        } finally {
-            connection.close();
         }
     }
 
@@ -1131,14 +1156,16 @@ class NewlyAddedTableITCase extends MySqlSourceTestBase {
         for (int round = 0; round < captureAddressTables.length; round++) {
             boolean insertData = round == 0;
             initialAddressTables(getConnection(), captureAddressTables, round, insertData);
-            String[] captureTablesThisRound =
-                    Arrays.asList(captureAddressTables)
-                            .subList(0, round + 1)
-                            .toArray(new String[0]);
+            String[] captureTablesThisRound = Arrays.copyOf(captureAddressTables, round + 1);
             String newlyAddedTable = captureAddressTables[round];
+
+            final Configuration restartStrategyConf = new Configuration();
+            restartStrategyConf.set(
+                    RestartStrategyOptions.RESTART_STRATEGY,
+                    RestartStrategyOptions.RestartStrategyType.NO_RESTART_STRATEGY.getMainValue());
             StreamExecutionEnvironment env =
-                    getStreamExecutionEnvironment(finishedSavePointPath, parallelism);
-            env.setRestartStrategy(noRestart());
+                    getStreamExecutionEnvironment(
+                            finishedSavePointPath, parallelism, restartStrategyConf);
             StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
             String createTableStatement =
                     getCreateTableStatement(sourceOptions, captureTablesThisRound);
@@ -1156,7 +1183,7 @@ class NewlyAddedTableITCase extends MySqlSourceTestBase {
                             + " 'sink-insert-only' = 'false'"
                             + ")");
             TableResult tableResult = tEnv.executeSql("insert into sink select * from address");
-            JobClient jobClient = tableResult.getJobClient().get();
+            JobClient jobClient = tableResult.getJobClient().orElseThrow();
             Thread.sleep(3_000);
             String tableName = captureAddressTables[round];
             if (!insertData) {
@@ -1169,13 +1196,13 @@ class NewlyAddedTableITCase extends MySqlSourceTestBase {
             String cityName = newlyAddedTable.split("_")[1];
             List<String> expectedSnapshotDataThisRound =
                     Arrays.asList(
-                            format(
+                            String.format(
                                     "+I[%s, 416874195632735147, China, %s, %s West Town address 1]",
                                     newlyAddedTable, cityName, cityName),
-                            format(
+                            String.format(
                                     "+I[%s, 416927583791428523, China, %s, %s West Town address 2]",
                                     newlyAddedTable, cityName, cityName),
-                            format(
+                            String.format(
                                     "+I[%s, 417022095255614379, China, %s, %s West Town address 3]",
                                     newlyAddedTable, cityName, cityName));
             fetchedDataList.addAll(expectedSnapshotDataThisRound);
@@ -1192,17 +1219,17 @@ class NewlyAddedTableITCase extends MySqlSourceTestBase {
                             .filter(
                                     r ->
                                             !r.contains(
-                                                    format(
+                                                    String.format(
                                                             "%s, 416874195632735147",
                                                             newlyAddedTable)))
                             .collect(Collectors.toList());
             List<String> expectedBinlogUpsertDataThisRound =
                     Arrays.asList(
                             // add the new data with id 416874195632735147
-                            format(
+                            String.format(
                                     "+I[%s, 416874195632735147, CHINA, %s, %s West Town address 1]",
                                     newlyAddedTable, cityName, cityName),
-                            format(
+                            String.format(
                                     "+I[%s, 417022095255614380, China, %s, %s West Town address 4]",
                                     newlyAddedTable, cityName, cityName));
             // step 5: assert fetched binlog data in this round
@@ -1224,7 +1251,7 @@ class NewlyAddedTableITCase extends MySqlSourceTestBase {
     private void initialAddressTables(
             JdbcConnection connection, String[] addressTables, int round, boolean insertData)
             throws SQLException {
-        try {
+        try (connection) {
             connection.setAutoCommit(false);
             String tableName = addressTables[round];
             String tableId = customDatabase.getDatabaseName() + "." + tableName;
@@ -1242,23 +1269,19 @@ class NewlyAddedTableITCase extends MySqlSourceTestBase {
                 insertData(connection, tableId, cityName);
             }
             connection.commit();
-        } finally {
-            connection.close();
         }
     }
 
     private void insertData(JdbcConnection connection, String tableId, String cityName)
             throws SQLException {
-        try {
+        try (connection) {
             connection.execute(
-                    format(
+                    String.format(
                             "INSERT INTO  %s "
                                     + "VALUES (416874195632735147, 'China', '%s', '%s West Town address 1'),"
                                     + "       (416927583791428523, 'China', '%s', '%s West Town address 2'),"
                                     + "       (417022095255614379, 'China', '%s', '%s West Town address 3');",
                             tableId, cityName, cityName, cityName, cityName, cityName, cityName));
-        } finally {
-            connection.close();
         }
     }
 }

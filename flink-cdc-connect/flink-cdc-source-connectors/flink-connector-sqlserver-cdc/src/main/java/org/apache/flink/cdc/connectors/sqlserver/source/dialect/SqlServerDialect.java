@@ -156,7 +156,8 @@ public class SqlServerDialect implements JdbcDataSourceDialect {
     }
 
     @Override
-    public FetchTask<SourceSplitBase> createFetchTask(SourceSplitBase sourceSplitBase) {
+    public FetchTask<SourceSplitBase, JdbcSourceConfig> createFetchTask(
+            SourceSplitBase sourceSplitBase) {
         if (sourceSplitBase.isSnapshotSplit()) {
             return new SqlServerScanFetchTask(sourceSplitBase.asSnapshotSplit());
         } else {

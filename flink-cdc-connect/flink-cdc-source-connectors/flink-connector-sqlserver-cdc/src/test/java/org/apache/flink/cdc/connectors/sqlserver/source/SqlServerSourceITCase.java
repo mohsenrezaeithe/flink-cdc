@@ -19,21 +19,25 @@ package org.apache.flink.cdc.connectors.sqlserver.source;
 
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
-import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.cdc.connectors.base.config.JdbcSourceConfig;
 import org.apache.flink.cdc.connectors.base.source.utils.hooks.SnapshotPhaseHook;
 import org.apache.flink.cdc.connectors.base.source.utils.hooks.SnapshotPhaseHooks;
 import org.apache.flink.cdc.connectors.sqlserver.source.config.SqlServerSourceConfig;
 import org.apache.flink.cdc.connectors.sqlserver.source.dialect.SqlServerDialect;
 import org.apache.flink.cdc.connectors.sqlserver.testutils.TestTable;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.RestartStrategyOptions;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.table.api.DataTypes;
 import org.apache.flink.table.api.TableResult;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
+import org.apache.flink.table.catalog.Column;
 import org.apache.flink.table.catalog.ResolvedSchema;
 import org.apache.flink.table.catalog.UniqueConstraint;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.types.Row;
 import org.apache.flink.util.CloseableIterator;
+import org.apache.flink.util.Preconditions;
 
 import io.debezium.jdbc.JdbcConnection;
 import org.apache.commons.lang3.StringUtils;
@@ -42,7 +46,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.testcontainers.containers.MSSQLServerContainer;
 
+import java.io.IOException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -51,13 +58,6 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-
-import static java.lang.String.format;
-import static org.apache.flink.table.api.DataTypes.BIGINT;
-import static org.apache.flink.table.api.DataTypes.STRING;
-import static org.apache.flink.table.catalog.Column.physical;
-import static org.apache.flink.util.Preconditions.checkState;
-import static org.testcontainers.containers.MSSQLServerContainer.MS_SQL_SERVER_PORT;
 
 /** IT tests for {@link SqlServerSourceBuilder.SqlServerIncrementalSource}. */
 @Timeout(value = 300, unit = TimeUnit.SECONDS)
@@ -113,13 +113,21 @@ class SqlServerSourceITCase extends SqlServerSourceTestBase {
 
     @Test
     void testReadSingleTableWithSingleParallelismAndSkipBackfill() throws Exception {
+        final Configuration restartStrategyConf = new Configuration();
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY,
+                RestartStrategyOptions.RestartStrategyType.FIXED_DELAY.getMainValue());
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_ATTEMPTS, 1);
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY_FIXED_DELAY_DELAY, Duration.ofSeconds(0));
         testSqlServerParallelSource(
                 DEFAULT_PARALLELISM,
                 FailoverType.TM,
                 FailoverPhase.SNAPSHOT,
                 new String[] {"dbo.customers"},
                 true,
-                RestartStrategies.fixedDelayRestart(1, 0),
+                restartStrategyConf,
                 null);
     }
 
@@ -281,13 +289,17 @@ class SqlServerSourceITCase extends SqlServerSourceTestBase {
     @Test
     public void testTableWithChunkColumnOfNoPrimaryKey() throws Exception {
         String chunkColumn = "name";
+        final Configuration conf = new Configuration();
+        conf.set(
+                RestartStrategyOptions.RESTART_STRATEGY,
+                RestartStrategyOptions.RestartStrategyType.NO_RESTART_STRATEGY.getMainValue());
         testSqlServerParallelSource(
                 1,
                 FailoverType.NONE,
                 FailoverPhase.NEVER,
                 new String[] {"dbo.customers"},
                 false,
-                RestartStrategies.noRestart(),
+                conf,
                 chunkColumn);
 
         // since `scan.incremental.snapshot.chunk.key-column` is set, an exception should not occur.
@@ -307,19 +319,21 @@ class SqlServerSourceITCase extends SqlServerSourceTestBase {
         ResolvedSchema customersSchema =
                 new ResolvedSchema(
                         Arrays.asList(
-                                physical("id", BIGINT().notNull()),
-                                physical("name", STRING()),
-                                physical("address", STRING()),
-                                physical("phone_number", STRING())),
+                                Column.physical("id", DataTypes.BIGINT().notNull()),
+                                Column.physical("name", DataTypes.STRING()),
+                                Column.physical("address", DataTypes.STRING()),
+                                Column.physical("phone_number", DataTypes.STRING())),
                         new ArrayList<>(),
                         UniqueConstraint.primaryKey("pk", Collections.singletonList("id")));
         TestTable customerTable = new TestTable(databaseName, "dbo", "customers", customersSchema);
         String tableId = customerTable.getTableId();
 
-        SqlServerSourceBuilder.SqlServerIncrementalSource source =
+        SqlServerSourceBuilder.SqlServerIncrementalSource<RowData> source =
                 SqlServerSourceBuilder.SqlServerIncrementalSource.<RowData>builder()
                         .hostname(MSSQL_SERVER_CONTAINER.getHost())
-                        .port(MSSQL_SERVER_CONTAINER.getMappedPort(MS_SQL_SERVER_PORT))
+                        .port(
+                                MSSQL_SERVER_CONTAINER.getMappedPort(
+                                        MSSQLServerContainer.MS_SQL_SERVER_PORT))
                         .username(MSSQL_SERVER_CONTAINER.getUsername())
                         .password(MSSQL_SERVER_CONTAINER.getPassword())
                         .databaseList(databaseName)
@@ -340,12 +354,14 @@ class SqlServerSourceITCase extends SqlServerSourceTestBase {
                 };
         SnapshotPhaseHook snapshotPhaseHook =
                 (sourceConfig, split) -> {
-                    SqlServerDialect dialect =
-                            new SqlServerDialect((SqlServerSourceConfig) sourceConfig);
-                    try (JdbcConnection sqlServerConnection =
-                            dialect.openJdbcConnection((JdbcSourceConfig) sourceConfig)) {
+                    try (SqlServerDialect dialect =
+                                    new SqlServerDialect((SqlServerSourceConfig) sourceConfig);
+                            JdbcConnection sqlServerConnection =
+                                    dialect.openJdbcConnection((JdbcSourceConfig) sourceConfig)) {
                         sqlServerConnection.execute(statements);
                         sqlServerConnection.commit();
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
                     }
                 };
 
@@ -356,14 +372,13 @@ class SqlServerSourceITCase extends SqlServerSourceTestBase {
         }
         source.setSnapshotHooks(hooks);
 
-        List<String> records = new ArrayList<>();
         try (CloseableIterator<RowData> iterator =
                 env.fromSource(source, WatermarkStrategy.noWatermarks(), "Backfill Skipped Source")
                         .executeAndCollect()) {
-            records = fetchRowData(iterator, fetchSize, customerTable::stringify);
+            List<String> records = fetchRowData(iterator, fetchSize, customerTable::stringify);
             env.close();
+            return records;
         }
-        return records;
     }
 
     private void testSqlServerParallelSource(
@@ -379,13 +394,21 @@ class SqlServerSourceITCase extends SqlServerSourceTestBase {
             FailoverPhase failoverPhase,
             String[] captureCustomerTables)
             throws Exception {
+        final Configuration restartStrategyConf = new Configuration();
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY,
+                RestartStrategyOptions.RestartStrategyType.FIXED_DELAY.getMainValue());
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_ATTEMPTS, 1);
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY_FIXED_DELAY_DELAY, Duration.ofSeconds(0));
         testSqlServerParallelSource(
                 parallelism,
                 failoverType,
                 failoverPhase,
                 captureCustomerTables,
                 false,
-                RestartStrategies.fixedDelayRestart(1, 0),
+                restartStrategyConf,
                 null);
     }
 
@@ -395,22 +418,22 @@ class SqlServerSourceITCase extends SqlServerSourceTestBase {
             FailoverPhase failoverPhase,
             String[] captureCustomerTables,
             boolean skipSnapshotBackfill,
-            RestartStrategies.RestartStrategyConfiguration restartStrategyConfiguration,
+            Configuration restartStrategyConfiguration,
             String chunkColumn)
             throws Exception {
 
         String databaseName = "customer";
 
         initializeSqlServerTable(databaseName);
-        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        StreamExecutionEnvironment env =
+                StreamExecutionEnvironment.getExecutionEnvironment(restartStrategyConfiguration);
         StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
 
         env.setParallelism(parallelism);
         env.enableCheckpointing(200L);
-        env.setRestartStrategy(restartStrategyConfiguration);
 
         String sourceDDL =
-                format(
+                String.format(
                         "CREATE TABLE customers ("
                                 + " id INT NOT NULL,"
                                 + " name STRING,"
@@ -431,7 +454,8 @@ class SqlServerSourceITCase extends SqlServerSourceTestBase {
                                 + "%s"
                                 + ")",
                         MSSQL_SERVER_CONTAINER.getHost(),
-                        MSSQL_SERVER_CONTAINER.getMappedPort(MS_SQL_SERVER_PORT),
+                        MSSQL_SERVER_CONTAINER.getMappedPort(
+                                MSSQLServerContainer.MS_SQL_SERVER_PORT),
                         MSSQL_SERVER_CONTAINER.getUsername(),
                         MSSQL_SERVER_CONTAINER.getPassword(),
                         databaseName,
@@ -471,7 +495,7 @@ class SqlServerSourceITCase extends SqlServerSourceTestBase {
         tEnv.executeSql(sourceDDL);
         TableResult tableResult = tEnv.executeSql("select * from customers");
         CloseableIterator<Row> iterator = tableResult.collect();
-        JobID jobId = tableResult.getJobClient().get().getJobID();
+        JobID jobId = tableResult.getJobClient().orElseThrow().getJobID();
         List<String> expectedSnapshotData = new ArrayList<>();
         for (int i = 0; i < captureCustomerTables.length; i++) {
             expectedSnapshotData.addAll(Arrays.asList(snapshotForSingleTable));
@@ -570,12 +594,12 @@ class SqlServerSourceITCase extends SqlServerSourceTestBase {
     }
 
     private String getTableNameRegex(String[] captureCustomerTables) {
-        checkState(captureCustomerTables.length > 0);
+        Preconditions.checkState(captureCustomerTables.length > 0);
         if (captureCustomerTables.length == 1) {
             return captureCustomerTables[0];
         } else {
             // pattern that matches multiple tables
-            return format("(%s)", StringUtils.join(captureCustomerTables, ","));
+            return String.format("(%s)", StringUtils.join(captureCustomerTables, ","));
         }
     }
 }

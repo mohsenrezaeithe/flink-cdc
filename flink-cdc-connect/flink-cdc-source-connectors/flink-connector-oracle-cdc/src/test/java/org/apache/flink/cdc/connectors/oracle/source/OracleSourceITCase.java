@@ -19,23 +19,28 @@ package org.apache.flink.cdc.connectors.oracle.source;
 
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
-import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.cdc.connectors.base.config.JdbcSourceConfig;
 import org.apache.flink.cdc.connectors.base.options.StartupOptions;
 import org.apache.flink.cdc.connectors.base.source.utils.hooks.SnapshotPhaseHook;
 import org.apache.flink.cdc.connectors.base.source.utils.hooks.SnapshotPhaseHooks;
 import org.apache.flink.cdc.connectors.oracle.source.utils.OracleConnectionUtils;
+import org.apache.flink.cdc.connectors.oracle.testutils.OracleTestUtils;
 import org.apache.flink.cdc.connectors.oracle.testutils.OracleTestUtils.FailoverPhase;
 import org.apache.flink.cdc.connectors.oracle.testutils.OracleTestUtils.FailoverType;
 import org.apache.flink.cdc.connectors.oracle.testutils.TestTable;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.RestartStrategyOptions;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.table.api.DataTypes;
 import org.apache.flink.table.api.TableResult;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
+import org.apache.flink.table.catalog.Column;
 import org.apache.flink.table.catalog.ResolvedSchema;
 import org.apache.flink.table.catalog.UniqueConstraint;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.types.Row;
 import org.apache.flink.util.CloseableIterator;
+import org.apache.flink.util.Preconditions;
 
 import io.debezium.connector.oracle.OracleConnection;
 import io.debezium.jdbc.JdbcConfiguration;
@@ -47,6 +52,7 @@ import org.slf4j.LoggerFactory;
 
 import java.sql.Connection;
 import java.sql.Statement;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -55,13 +61,6 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-
-import static java.lang.String.format;
-import static org.apache.flink.cdc.connectors.oracle.testutils.OracleTestUtils.triggerFailover;
-import static org.apache.flink.table.api.DataTypes.BIGINT;
-import static org.apache.flink.table.api.DataTypes.STRING;
-import static org.apache.flink.table.catalog.Column.physical;
-import static org.apache.flink.util.Preconditions.checkState;
 
 /** IT tests for {@link OracleSourceBuilder.OracleIncrementalSource}. */
 @Timeout(value = 300, unit = TimeUnit.SECONDS)
@@ -123,13 +122,21 @@ public class OracleSourceITCase extends OracleSourceTestBase {
 
     @Test
     void testReadSingleTableWithSingleParallelismAndSkipBackfill() throws Exception {
+        Configuration restartStrategyConf = new Configuration();
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY,
+                RestartStrategyOptions.RestartStrategyType.FIXED_DELAY.getMainValue());
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_ATTEMPTS, 1);
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY_FIXED_DELAY_DELAY, Duration.ofSeconds(0));
         testOracleParallelSource(
                 DEFAULT_PARALLELISM,
                 FailoverType.TM,
                 FailoverPhase.SNAPSHOT,
                 new String[] {"CUSTOMERS"},
                 true,
-                RestartStrategies.fixedDelayRestart(1, 0),
+                restartStrategyConf,
                 null);
     }
 
@@ -382,6 +389,10 @@ public class OracleSourceITCase extends OracleSourceTestBase {
 
     @Test
     public void testTableWithChunkColumnOfNoPrimaryKey() throws Exception {
+        Configuration restartStrategyConf = new Configuration();
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY,
+                RestartStrategyOptions.RestartStrategyType.NO_RESTART_STRATEGY.getMainValue());
         String chunkColumn = "NAME";
         testOracleParallelSource(
                 1,
@@ -389,7 +400,7 @@ public class OracleSourceITCase extends OracleSourceTestBase {
                 FailoverPhase.NEVER,
                 new String[] {"CUSTOMERS"},
                 false,
-                RestartStrategies.noRestart(),
+                restartStrategyConf,
                 chunkColumn);
 
         // since `scan.incremental.snapshot.chunk.key-column` is set, an exception should not occur.
@@ -409,17 +420,17 @@ public class OracleSourceITCase extends OracleSourceTestBase {
         ResolvedSchema customersSchema =
                 new ResolvedSchema(
                         Arrays.asList(
-                                physical("ID", BIGINT().notNull()),
-                                physical("NAME", STRING()),
-                                physical("ADDRESS", STRING()),
-                                physical("PHONE_NUMBER", STRING())),
+                                Column.physical("ID", DataTypes.BIGINT().notNull()),
+                                Column.physical("NAME", DataTypes.STRING()),
+                                Column.physical("ADDRESS", DataTypes.STRING()),
+                                Column.physical("PHONE_NUMBER", DataTypes.STRING())),
                         new ArrayList<>(),
                         UniqueConstraint.primaryKey("pk", Collections.singletonList("ID")));
         TestTable customerTable =
                 new TestTable(ORACLE_DATABASE, ORACLE_SCHEMA, "CUSTOMERS", customersSchema);
         String tableId = customerTable.getTableId();
 
-        OracleSourceBuilder.OracleIncrementalSource source =
+        OracleSourceBuilder.OracleIncrementalSource<RowData> source =
                 OracleSourceBuilder.OracleIncrementalSource.<RowData>builder()
                         .hostname(ORACLE_CONTAINER.getHost())
                         .port(ORACLE_CONTAINER.getOraclePort())
@@ -475,14 +486,13 @@ public class OracleSourceITCase extends OracleSourceTestBase {
         }
         source.setSnapshotHooks(hooks);
 
-        List<String> records = new ArrayList<>();
         try (CloseableIterator<RowData> iterator =
                 env.fromSource(source, WatermarkStrategy.noWatermarks(), "Backfill Skipped Source")
                         .executeAndCollect()) {
-            records = fetchRowData(iterator, fetchSize, customerTable::stringify);
+            List<String> records = fetchRowData(iterator, fetchSize, customerTable::stringify);
             env.close();
+            return records;
         }
-        return records;
     }
 
     private void testOracleParallelSource(
@@ -498,13 +508,21 @@ public class OracleSourceITCase extends OracleSourceTestBase {
             FailoverPhase failoverPhase,
             String[] captureCustomerTables)
             throws Exception {
+        Configuration restartStrategyConf = new Configuration();
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY,
+                RestartStrategyOptions.RestartStrategyType.FIXED_DELAY.getMainValue());
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_ATTEMPTS, 1);
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY_FIXED_DELAY_DELAY, Duration.ofSeconds(0));
         testOracleParallelSource(
                 parallelism,
                 failoverType,
                 failoverPhase,
                 captureCustomerTables,
                 false,
-                RestartStrategies.fixedDelayRestart(1, 0),
+                restartStrategyConf,
                 null);
     }
 
@@ -514,19 +532,19 @@ public class OracleSourceITCase extends OracleSourceTestBase {
             FailoverPhase failoverPhase,
             String[] captureCustomerTables,
             boolean skipSnapshotBackfill,
-            RestartStrategies.RestartStrategyConfiguration restartStrategyConfiguration,
+            Configuration restartStrategyConfiguration,
             String chunkColumn)
             throws Exception {
         createAndInitialize("customer.sql");
-        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        StreamExecutionEnvironment env =
+                StreamExecutionEnvironment.getExecutionEnvironment(restartStrategyConfiguration);
         StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
 
         env.setParallelism(parallelism);
         env.enableCheckpointing(200L);
-        env.setRestartStrategy(restartStrategyConfiguration);
 
         String sourceDDL =
-                format(
+                String.format(
                         "CREATE TABLE products ("
                                 + " ID INT NOT NULL,"
                                 + " NAME STRING,"
@@ -592,7 +610,7 @@ public class OracleSourceITCase extends OracleSourceTestBase {
         tEnv.executeSql(sourceDDL);
         TableResult tableResult = tEnv.executeSql("select * from products");
         CloseableIterator<Row> iterator = tableResult.collect();
-        JobID jobId = tableResult.getJobClient().get().getJobID();
+        JobID jobId = tableResult.getJobClient().orElseThrow().getJobID();
         List<String> expectedSnapshotData = new ArrayList<>();
         for (int i = 0; i < captureCustomerTables.length; i++) {
             expectedSnapshotData.addAll(Arrays.asList(snapshotForSingleTable));
@@ -600,7 +618,7 @@ public class OracleSourceITCase extends OracleSourceTestBase {
 
         // trigger failover after some snapshot splits read finished
         if (failoverPhase == FailoverPhase.SNAPSHOT && iterator.hasNext()) {
-            triggerFailover(
+            OracleTestUtils.triggerFailover(
                     failoverType,
                     jobId,
                     miniClusterResource.get().getMiniCluster(),
@@ -616,7 +634,7 @@ public class OracleSourceITCase extends OracleSourceTestBase {
             makeFirstPartRedoLogEvents(ORACLE_SCHEMA + '.' + tableId);
         }
         if (failoverPhase == FailoverPhase.REDO_LOG) {
-            triggerFailover(
+            OracleTestUtils.triggerFailover(
                     failoverType,
                     jobId,
                     miniClusterResource.get().getMiniCluster(),
@@ -692,12 +710,12 @@ public class OracleSourceITCase extends OracleSourceTestBase {
     }
 
     private String getTableNameRegex(String[] captureCustomerTables) {
-        checkState(captureCustomerTables.length > 0);
+        Preconditions.checkState(captureCustomerTables.length > 0);
         if (captureCustomerTables.length == 1) {
             return captureCustomerTables[0];
         } else {
             // pattern that matches multiple tables
-            return format("(%s)", StringUtils.join(captureCustomerTables, "|"));
+            return String.format("(%s)", StringUtils.join(captureCustomerTables, "|"));
         }
     }
 

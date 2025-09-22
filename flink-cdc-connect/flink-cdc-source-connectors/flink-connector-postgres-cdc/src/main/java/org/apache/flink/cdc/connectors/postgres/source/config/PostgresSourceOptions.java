@@ -60,17 +60,6 @@ public class PostgresSourceOptions extends JdbcSourceOptions {
                                     + "\"all\": Encodes changes as retract stream using all RowKinds. This is the default mode.\n"
                                     + "\"upsert\": Encodes changes as upsert stream that describes idempotent updates on a key. It can be used for tables with primary keys when replica identity FULL is not an option.");
 
-    public static final ConfigOption<Boolean> SCAN_INCREMENTAL_SNAPSHOT_ENABLED =
-            ConfigOptions.key("scan.incremental.snapshot.enabled")
-                    .booleanType()
-                    .defaultValue(false)
-                    .withDescription(
-                            "Incremental snapshot is a new mechanism to read snapshot of a table. "
-                                    + "Compared to the old snapshot mechanism, the incremental snapshot has many advantages, including:\n"
-                                    + "(1) source can be parallel during snapshot reading, \n"
-                                    + "(2) source can perform checkpoints in the chunk granularity during snapshot reading, \n"
-                                    + "(3) source doesn't need to acquire global read lock before snapshot reading.");
-
     public static final ConfigOption<Duration> HEARTBEAT_INTERVAL =
             ConfigOptions.key("heartbeat.interval.ms")
                     .durationType()

@@ -26,16 +26,22 @@ import org.apache.flink.cdc.connectors.mongodb.source.assigners.splitters.SplitS
 import org.apache.flink.cdc.connectors.mongodb.source.assigners.splitters.SplitVectorSplitStrategy;
 import org.apache.flink.cdc.connectors.mongodb.source.config.MongoDBSourceConfig;
 import org.apache.flink.cdc.connectors.mongodb.source.config.MongoDBSourceConfigFactory;
+import org.apache.flink.cdc.connectors.mongodb.utils.MongoDBContainer;
 
 import io.debezium.relational.TableId;
 import org.assertj.core.api.Assertions;
 import org.bson.BsonDocument;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.testcontainers.containers.output.Slf4jLogConsumer;
+import org.testcontainers.lifecycle.Startables;
 
 import java.util.LinkedList;
+import java.util.stream.Stream;
 
 import static org.apache.flink.cdc.connectors.mongodb.internal.MongoDBEnvelope.BSON_MAX_KEY;
 import static org.apache.flink.cdc.connectors.mongodb.utils.MongoDBContainer.FLINK_USER;
@@ -47,15 +53,32 @@ class MongoDBSnapshotSplitReaderAssignEndingFirstTest extends MongoDBSourceTestB
     private static final Logger LOG =
             LoggerFactory.getLogger(MongoDBSnapshotSplitReaderAssignEndingFirstTest.class);
 
-    private String database;
+    private static final MongoDBContainer MONGO_CONTAINER =
+            new MongoDBContainer("mongo:" + getMongoVersion())
+                    .withSharding()
+                    .withLogConsumer(new Slf4jLogConsumer(LOG));
 
-    private MongoDBSourceConfig sourceConfig;
+    @BeforeAll
+    static void startContainers() {
+        LOG.info("Starting containers...");
+        Startables.deepStart(Stream.of(MONGO_CONTAINER)).join();
+        LOG.info("Containers are started.");
+    }
+
+    @AfterAll
+    static void stopContainers() {
+        LOG.info("Stopping containers...");
+        if (MONGO_CONTAINER != null) {
+            MONGO_CONTAINER.stop();
+        }
+        LOG.info("Containers are stopped.");
+    }
 
     private SplitContext splitContext;
 
     @BeforeEach
     void before() {
-        database = MONGO_CONTAINER.executeCommandFileInSeparateDatabase("chunk_test");
+        String database = MONGO_CONTAINER.executeCommandFileInSeparateDatabase("chunk_test");
 
         MongoDBSourceConfigFactory configFactory =
                 new MongoDBSourceConfigFactory()
@@ -69,23 +92,23 @@ class MongoDBSnapshotSplitReaderAssignEndingFirstTest extends MongoDBSourceTestB
                         .pollAwaitTimeMillis(500)
                         .assignUnboundedChunkFirst(true);
 
-        sourceConfig = configFactory.create(0);
+        MongoDBSourceConfig sourceConfig = configFactory.create(0);
 
         splitContext = SplitContext.of(sourceConfig, new TableId(database, null, "shopping_cart"));
     }
 
     @Test
-    void testMongoDBSnapshotSplitReaderWithSplitVectorSplitter() throws Exception {
+    void testMongoDBSnapshotSplitReaderWithSplitVectorSplitter() {
         testMongoDBSnapshotSplitReader(SplitVectorSplitStrategy.INSTANCE);
     }
 
     @Test
-    void testMongoDBSnapshotSplitReaderWithSamplerSplitter() throws Exception {
+    void testMongoDBSnapshotSplitReaderWithSamplerSplitter() {
         testMongoDBSnapshotSplitReader(SampleBucketSplitStrategy.INSTANCE);
     }
 
     @Test
-    void testMongoDBSnapshotSplitReaderWithSingleSplitter() throws Exception {
+    void testMongoDBSnapshotSplitReaderWithSingleSplitter() {
         testMongoDBSnapshotSplitReader(SingleSplitStrategy.INSTANCE);
     }
 

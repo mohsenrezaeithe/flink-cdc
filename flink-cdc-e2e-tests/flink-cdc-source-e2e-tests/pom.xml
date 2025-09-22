@@ -99,13 +99,13 @@ limitations under the License.
             <type>test-jar</type>
             <scope>test</scope>
         </dependency>
-        <dependency>
+        <!--<dependency>
             <groupId>org.apache.flink</groupId>
             <artifactId>flink-connector-tidb-cdc</artifactId>
             <version>${project.version}</version>
             <type>test-jar</type>
             <scope>test</scope>
-        </dependency>
+        </dependency>-->
         <dependency>
             <groupId>org.apache.flink</groupId>
             <artifactId>flink-connector-db2-cdc</artifactId>
@@ -113,13 +113,13 @@ limitations under the License.
             <type>test-jar</type>
             <scope>test</scope>
         </dependency>
-        <dependency>
+        <!--<dependency>
             <groupId>org.apache.flink</groupId>
             <artifactId>flink-connector-vitess-cdc</artifactId>
             <version>${project.version}</version>
             <type>test-jar</type>
             <scope>test</scope>
-        </dependency>
+        </dependency>-->
         <dependency>
             <groupId>org.apache.flink</groupId>
             <artifactId>flink-connector-test-util</artifactId>
@@ -131,43 +131,36 @@ limitations under the License.
         <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>junit-jupiter</artifactId>
-            <version>${testcontainers.version}</version>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>mysql</artifactId>
-            <version>${testcontainers.version}</version>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>postgresql</artifactId>
-            <version>${testcontainers.version}</version>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>oracle-xe</artifactId>
-            <version>${testcontainers.version}</version>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>mssqlserver</artifactId>
-            <version>${testcontainers.version}</version>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>db2</artifactId>
-            <version>${testcontainers.version}</version>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>mongodb</artifactId>
-            <version>${testcontainers.version}</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -242,8 +235,8 @@ limitations under the License.
                         <artifactItem>
                             <groupId>org.apache.flink</groupId>
                             <artifactId>flink-connector-jdbc</artifactId>
-                            <version>${jdbc.version-1.19}</version>
-                            <destFileName>jdbc-connector_${flink-1.19}.jar</destFileName>
+                            <version>${jdbc.version-1.20}</version>
+                            <destFileName>jdbc-connector_${flink-1.20}.jar</destFileName>
                             <type>jar</type>
                             <outputDirectory>${project.build.directory}/dependencies
                             </outputDirectory>
@@ -369,7 +362,7 @@ limitations under the License.
                             </outputDirectory>
                         </artifactItem>
 
-                        <artifactItem>
+                        <!--<artifactItem>
                             <groupId>org.apache.flink</groupId>
                             <artifactId>flink-sql-connector-tidb-cdc</artifactId>
                             <version>${project.version}</version>
@@ -377,7 +370,7 @@ limitations under the License.
                             <type>jar</type>
                             <outputDirectory>${project.build.directory}/dependencies
                             </outputDirectory>
-                        </artifactItem>
+                        </artifactItem>-->
 
                         <artifactItem>
                             <groupId>org.apache.flink</groupId>
@@ -389,7 +382,7 @@ limitations under the License.
                             </outputDirectory>
                         </artifactItem>
 
-                        <artifactItem>
+                        <!--<artifactItem>
                             <groupId>org.apache.flink</groupId>
                             <artifactId>flink-sql-connector-vitess-cdc</artifactId>
                             <version>${project.version}</version>
@@ -397,7 +390,7 @@ limitations under the License.
                             <type>jar</type>
                             <outputDirectory>${project.build.directory}/dependencies
                             </outputDirectory>
-                        </artifactItem>
+                        </artifactItem>-->
 
                         <artifactItem>
                             <groupId>com.ibm.db2.jcc</groupId>

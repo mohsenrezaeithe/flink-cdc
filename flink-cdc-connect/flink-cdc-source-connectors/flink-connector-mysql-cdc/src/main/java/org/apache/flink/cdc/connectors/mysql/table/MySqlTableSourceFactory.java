@@ -95,8 +95,6 @@ public class MySqlTableSourceFactory implements DynamicTableSourceFactory {
                 config.getOptional(MySqlSourceOptions.SCAN_INCREMENTAL_SNAPSHOT_CHUNK_KEY_COLUMN)
                         .orElse(null);
 
-        boolean enableParallelRead =
-                config.get(MySqlSourceOptions.SCAN_INCREMENTAL_SNAPSHOT_ENABLED);
         boolean closeIdleReaders =
                 config.get(MySqlSourceOptions.SCAN_INCREMENTAL_CLOSE_IDLE_READER_ENABLED);
         boolean skipSnapshotBackFill =
@@ -110,19 +108,17 @@ public class MySqlTableSourceFactory implements DynamicTableSourceFactory {
         boolean appendOnly =
                 config.get(MySqlSourceOptions.SCAN_READ_CHANGELOG_AS_APPEND_ONLY_ENABLED);
 
-        if (enableParallelRead) {
-            validatePrimaryKeyIfEnableParallel(physicalSchema, chunkKeyColumn);
-            validateIntegerOption(
-                    MySqlSourceOptions.SCAN_INCREMENTAL_SNAPSHOT_CHUNK_SIZE, splitSize, 1);
-            validateIntegerOption(MySqlSourceOptions.CHUNK_META_GROUP_SIZE, splitMetaGroupSize, 1);
-            validateIntegerOption(MySqlSourceOptions.SCAN_SNAPSHOT_FETCH_SIZE, fetchSize, 1);
-            validateIntegerOption(MySqlSourceOptions.CONNECTION_POOL_SIZE, connectionPoolSize, 1);
-            validateIntegerOption(MySqlSourceOptions.CONNECT_MAX_RETRIES, connectMaxRetries, 0);
-            validateDistributionFactorUpper(distributionFactorUpper);
-            validateDistributionFactorLower(distributionFactorLower);
-            validateDurationOption(
-                    MySqlSourceOptions.CONNECT_TIMEOUT, connectTimeout, Duration.ofMillis(250));
-        }
+        validatePrimaryKeyIfEnableParallel(physicalSchema, chunkKeyColumn);
+        validateIntegerOption(
+                MySqlSourceOptions.SCAN_INCREMENTAL_SNAPSHOT_CHUNK_SIZE, splitSize, 1);
+        validateIntegerOption(MySqlSourceOptions.CHUNK_META_GROUP_SIZE, splitMetaGroupSize, 1);
+        validateIntegerOption(MySqlSourceOptions.SCAN_SNAPSHOT_FETCH_SIZE, fetchSize, 1);
+        validateIntegerOption(MySqlSourceOptions.CONNECTION_POOL_SIZE, connectionPoolSize, 1);
+        validateIntegerOption(MySqlSourceOptions.CONNECT_MAX_RETRIES, connectMaxRetries, 0);
+        validateDistributionFactorUpper(distributionFactorUpper);
+        validateDistributionFactorLower(distributionFactorLower);
+        validateDurationOption(
+                MySqlSourceOptions.CONNECT_TIMEOUT, connectTimeout, Duration.ofMillis(250));
 
         OptionUtils.printOptions(IDENTIFIER, config.toMap());
 
@@ -137,7 +133,6 @@ public class MySqlTableSourceFactory implements DynamicTableSourceFactory {
                 serverTimeZone,
                 getDebeziumProperties(context.getCatalogTable().getOptions()),
                 serverId,
-                enableParallelRead,
                 splitSize,
                 splitMetaGroupSize,
                 fetchSize,
@@ -261,7 +256,7 @@ public class MySqlTableSourceFactory implements DynamicTableSourceFactory {
                 config.getOptional(MySqlSourceOptions.SCAN_STARTUP_SPECIFIC_OFFSET_FILE);
         Optional<Long> binlogPosition =
                 config.getOptional(MySqlSourceOptions.SCAN_STARTUP_SPECIFIC_OFFSET_POS);
-        if (!gtidSet.isPresent() && !(binlogFilename.isPresent() && binlogPosition.isPresent())) {
+        if (gtidSet.isEmpty() && !(binlogFilename.isPresent() && binlogPosition.isPresent())) {
             throw new ValidationException(
                     String.format(
                             "Unable to find a valid binlog offset. Either %s, or %s and %s are required.",
@@ -298,7 +293,7 @@ public class MySqlTableSourceFactory implements DynamicTableSourceFactory {
 
     private void validatePrimaryKeyIfEnableParallel(
             ResolvedSchema physicalSchema, @Nullable String chunkKeyColumn) {
-        if (chunkKeyColumn == null && !physicalSchema.getPrimaryKey().isPresent()) {
+        if (chunkKeyColumn == null && physicalSchema.getPrimaryKey().isEmpty()) {
             throw new ValidationException(
                     String.format(
                             "'%s' is required for table without primary key when '%s' enabled.",
@@ -395,12 +390,10 @@ public class MySqlTableSourceFactory implements DynamicTableSourceFactory {
                     "{} is not set, which might cause data inconsistencies for time-related fields.",
                     MySqlSourceOptions.SERVER_TIME_ZONE.key());
             final String sessionTimeZone = config.get(TableConfigOptions.LOCAL_TIME_ZONE);
-            final ZoneId zoneId =
-                    TableConfigOptions.LOCAL_TIME_ZONE.defaultValue().equals(sessionTimeZone)
-                            ? ZoneId.systemDefault()
-                            : ZoneId.of(sessionTimeZone);
 
-            return zoneId;
+            return TableConfigOptions.LOCAL_TIME_ZONE.defaultValue().equals(sessionTimeZone)
+                    ? ZoneId.systemDefault()
+                    : ZoneId.of(sessionTimeZone);
         }
     }
 }

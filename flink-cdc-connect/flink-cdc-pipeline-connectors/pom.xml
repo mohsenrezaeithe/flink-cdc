@@ -42,11 +42,6 @@ limitations under the License.
         <module>flink-cdc-pipeline-connector-fluss</module>
     </modules>
 
-    <properties>
-        <flink.version>1.20.1</flink.version>
-        <flink.major.version>1.20</flink.major.version>
-    </properties>
-
     <dependencies>
         <dependency>
             <groupId>org.apache.flink</groupId>

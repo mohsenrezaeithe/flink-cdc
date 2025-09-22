@@ -42,6 +42,7 @@ import com.oceanbase.connector.flink.OceanBaseConnectorOptions;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -56,6 +57,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Tests for {@link OceanBaseMetadataApplier}. */
+@Disabled("Cannot run on Intel Mac")
 class OceanBaseMetadataApplierTest {
     private static final Logger LOG = LoggerFactory.getLogger(OceanBaseMetadataApplierTest.class);
 

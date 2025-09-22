@@ -78,17 +78,15 @@ public class MySqlToIcebergE2eITCase extends PipelineTestEnvironment {
 
     @org.testcontainers.junit.jupiter.Container
     public static final MySqlContainer MYSQL =
-            (MySqlContainer)
-                    new MySqlContainer(
-                                    MySqlVersion.V8_0) // v8 support both ARM and AMD architectures
-                            .withConfigurationOverride("docker/mysql/my.cnf")
-                            .withSetupSQL("docker/mysql/setup.sql")
-                            .withDatabaseName("flink-test")
-                            .withUsername("flinkuser")
-                            .withPassword("flinkpw")
-                            .withNetwork(NETWORK)
-                            .withNetworkAliases("mysql")
-                            .withLogConsumer(new Slf4jLogConsumer(LOG));
+            new MySqlContainer(MySqlVersion.V8_0) // v8 support both ARM and AMD architectures
+                    .withConfigurationOverride("docker/mysql/my.cnf")
+                    .withSetupSQL("docker/mysql/setup.sql")
+                    .withDatabaseName("flink-test")
+                    .withUsername("flinkuser")
+                    .withPassword("flinkpw")
+                    .withNetwork(NETWORK)
+                    .withNetworkAliases("mysql")
+                    .withLogConsumer(new Slf4jLogConsumer(LOG));
 
     protected final UniqueDatabase inventoryDatabase =
             new UniqueDatabase(MYSQL, "iceberg_inventory", MYSQL_TEST_USER, MYSQL_TEST_PASSWORD);

@@ -18,19 +18,49 @@
 package org.apache.flink.cdc.connectors.mongodb.source;
 
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
+import org.apache.flink.cdc.connectors.mongodb.utils.MongoDBContainer;
 import org.apache.flink.cdc.debezium.JsonDebeziumDeserializationSchema;
+import org.apache.flink.configuration.CheckpointingOptions;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.testcontainers.containers.output.Slf4jLogConsumer;
+import org.testcontainers.lifecycle.Startables;
 
-import static org.apache.flink.cdc.connectors.mongodb.utils.MongoDBContainer.FLINK_USER;
-import static org.apache.flink.cdc.connectors.mongodb.utils.MongoDBContainer.FLINK_USER_PASSWORD;
-import static org.apache.flink.streaming.api.environment.ExecutionCheckpointingOptions.ENABLE_CHECKPOINTS_AFTER_TASKS_FINISH;
+import java.util.stream.Stream;
 
 /** Example Tests for {@link MongoDBSource}. */
 class MongoDBParallelSourceExampleTest extends MongoDBSourceTestBase {
+
+    private static final Logger LOG =
+            LoggerFactory.getLogger(MongoDBParallelSourceExampleTest.class);
+
+    private static final MongoDBContainer MONGO_CONTAINER =
+            new MongoDBContainer("mongo:" + getMongoVersion())
+                    .withSharding()
+                    .withLogConsumer(new Slf4jLogConsumer(LOG));
+
+    @BeforeAll
+    static void startContainers() {
+        LOG.info("Starting containers...");
+        Startables.deepStart(Stream.of(MONGO_CONTAINER)).join();
+        LOG.info("Containers are started.");
+    }
+
+    @AfterAll
+    static void stopContainers() {
+        LOG.info("Stopping containers...");
+        if (MONGO_CONTAINER != null) {
+            MONGO_CONTAINER.stop();
+        }
+        LOG.info("Containers are stopped.");
+    }
 
     @Test
     @Disabled("Test ignored because it won't stop and is used for manual test")
@@ -42,14 +72,14 @@ class MongoDBParallelSourceExampleTest extends MongoDBSourceTestBase {
                         .hosts(MONGO_CONTAINER.getHostAndPort())
                         .databaseList(database)
                         .collectionList(database + ".products")
-                        .username(FLINK_USER)
-                        .password(FLINK_USER_PASSWORD)
+                        .username(MongoDBContainer.FLINK_USER)
+                        .password(MongoDBContainer.FLINK_USER_PASSWORD)
                         .deserializer(new JsonDebeziumDeserializationSchema())
                         .closeIdleReaders(true)
                         .build();
 
         Configuration config = new Configuration();
-        config.set(ENABLE_CHECKPOINTS_AFTER_TASKS_FINISH, true);
+        config.set(CheckpointingOptions.ENABLE_CHECKPOINTS_AFTER_TASKS_FINISH, true);
 
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment(config);
         // enable checkpoint

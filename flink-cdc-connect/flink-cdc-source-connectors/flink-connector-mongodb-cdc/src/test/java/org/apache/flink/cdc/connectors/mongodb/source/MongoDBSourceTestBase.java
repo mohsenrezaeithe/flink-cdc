@@ -18,31 +18,20 @@
 package org.apache.flink.cdc.connectors.mongodb.source;
 
 import org.apache.flink.cdc.connectors.mongodb.utils.MongoDBContainer;
-import org.apache.flink.cdc.connectors.utils.ExternalResourceProxy;
-import org.apache.flink.configuration.Configuration;
-import org.apache.flink.runtime.minicluster.RpcServiceSharing;
 import org.apache.flink.runtime.testutils.InMemoryReporter;
-import org.apache.flink.runtime.testutils.MiniClusterResourceConfiguration;
-import org.apache.flink.test.util.MiniClusterWithClientResource;
+import org.apache.flink.test.util.AbstractTestBase;
 
 import com.mongodb.ConnectionString;
 import com.mongodb.MongoClientSettings;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.extension.RegisterExtension;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.testcontainers.containers.output.Slf4jLogConsumer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.util.Objects;
 
 /** MongoDBSourceTestBase for MongoDB >= 5.0.3. */
-@Testcontainers
-public class MongoDBSourceTestBase {
+public class MongoDBSourceTestBase extends AbstractTestBase {
 
     private static final Logger LOG = LoggerFactory.getLogger(MongoDBSourceTestBase.class);
 
@@ -51,50 +40,22 @@ public class MongoDBSourceTestBase {
     public static String getMongoVersion() {
         String specifiedMongoVersion = System.getProperty("specifiedMongoVersion");
         if (Objects.isNull(specifiedMongoVersion)) {
-            throw new IllegalArgumentException(
-                    "No MongoDB version specified to run this test. Please use -DspecifiedMongoVersion to pass one.");
+            specifiedMongoVersion = "7.0.12";
+            LOG.info(
+                    "No MongoDB version was specified to run this test. Using {}",
+                    specifiedMongoVersion);
         }
         return specifiedMongoVersion;
     }
 
     protected static final int DEFAULT_PARALLELISM = 4;
 
-    @Container
-    public static final MongoDBContainer MONGO_CONTAINER =
-            new MongoDBContainer("mongo:" + getMongoVersion())
-                    .withSharding()
-                    .withLogConsumer(new Slf4jLogConsumer(LOG));
-
-    protected MongoClient mongodbClient;
-
-    @RegisterExtension
-    public final ExternalResourceProxy<MiniClusterWithClientResource> miniClusterResource =
-            new ExternalResourceProxy<>(
-                    new MiniClusterWithClientResource(
-                            new MiniClusterResourceConfiguration.Builder()
-                                    .setNumberTaskManagers(1)
-                                    .setNumberSlotsPerTaskManager(DEFAULT_PARALLELISM)
-                                    .setRpcServiceSharing(RpcServiceSharing.DEDICATED)
-                                    .setConfiguration(
-                                            metricReporter.addToConfiguration(new Configuration()))
-                                    .withHaLeadershipControl()
-                                    .build()));
-
-    @BeforeEach
-    public void createClients() {
+    protected MongoClient createClients(MongoDBContainer container) {
         MongoClientSettings settings =
                 MongoClientSettings.builder()
                         .applyConnectionString(
-                                new ConnectionString(MONGO_CONTAINER.getConnectionString()))
+                                new ConnectionString(container.getConnectionString()))
                         .build();
-        mongodbClient = MongoClients.create(settings);
-    }
-
-    @AfterEach
-    public void destroyClients() {
-        if (mongodbClient != null) {
-            mongodbClient.close();
-            mongodbClient = null;
-        }
+        return MongoClients.create(settings);
     }
 }

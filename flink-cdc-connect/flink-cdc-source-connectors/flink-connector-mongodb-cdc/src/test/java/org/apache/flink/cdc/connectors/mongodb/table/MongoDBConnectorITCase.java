@@ -18,6 +18,8 @@
 package org.apache.flink.cdc.connectors.mongodb.table;
 
 import org.apache.flink.cdc.connectors.mongodb.source.MongoDBSourceTestBase;
+import org.apache.flink.cdc.connectors.mongodb.utils.MongoDBContainer;
+import org.apache.flink.cdc.connectors.mongodb.utils.MongoDBTestUtils;
 import org.apache.flink.cdc.connectors.utils.StaticExternalResourceProxy;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.api.EnvironmentSettings;
@@ -26,6 +28,7 @@ import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 import org.apache.flink.table.planner.factories.TestValuesTableFactory;
 import org.apache.flink.table.utils.LegacyRowResource;
 
+import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Updates;
@@ -34,9 +37,17 @@ import org.bson.BsonDateTime;
 import org.bson.BsonTimestamp;
 import org.bson.Document;
 import org.bson.types.ObjectId;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.testcontainers.containers.output.Slf4jLogConsumer;
+import org.testcontainers.lifecycle.Startables;
 
 import java.time.ZoneId;
 import java.util.Arrays;
@@ -45,13 +56,46 @@ import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import static org.apache.flink.cdc.connectors.mongodb.utils.MongoDBContainer.FLINK_USER;
-import static org.apache.flink.cdc.connectors.mongodb.utils.MongoDBContainer.FLINK_USER_PASSWORD;
-import static org.apache.flink.cdc.connectors.mongodb.utils.MongoDBTestUtils.waitForSinkSize;
-import static org.apache.flink.cdc.connectors.mongodb.utils.MongoDBTestUtils.waitForSnapshotStarted;
-
 /** Integration tests for MongoDB change stream event SQL source. */
 class MongoDBConnectorITCase extends MongoDBSourceTestBase {
+
+    private static final Logger LOG = LoggerFactory.getLogger(MongoDBConnectorITCase.class);
+
+    protected MongoClient mongodbClient;
+
+    private static final MongoDBContainer MONGO_CONTAINER =
+            new MongoDBContainer("mongo:" + getMongoVersion())
+                    .withSharding()
+                    .withLogConsumer(new Slf4jLogConsumer(LOG));
+
+    @BeforeAll
+    static void startContainers() {
+        LOG.info("Starting containers...");
+        Startables.deepStart(Stream.of(MONGO_CONTAINER)).join();
+        LOG.info("Containers are started.");
+    }
+
+    @AfterAll
+    static void stopContainers() {
+        LOG.info("Stopping containers...");
+        if (MONGO_CONTAINER != null) {
+            MONGO_CONTAINER.stop();
+        }
+        LOG.info("Containers are stopped.");
+    }
+
+    @BeforeEach
+    public void testSetup() {
+        mongodbClient = this.createClients(MONGO_CONTAINER);
+    }
+
+    @AfterEach
+    public void testDestroy() {
+        if (mongodbClient != null) {
+            mongodbClient.close();
+            mongodbClient = null;
+        }
+    }
 
     private final StreamExecutionEnvironment env =
             StreamExecutionEnvironment.getExecutionEnvironment();
@@ -101,8 +145,8 @@ class MongoDBConnectorITCase extends MongoDBSourceTestBase {
                                 + " 'heartbeat.interval.ms' = '1000'"
                                 + ")",
                         MONGO_CONTAINER.getHostAndPort(),
-                        FLINK_USER,
-                        FLINK_USER_PASSWORD,
+                        MongoDBContainer.FLINK_USER,
+                        MongoDBContainer.FLINK_USER_PASSWORD,
                         database,
                         "products",
                         parallelismSnapshot);
@@ -124,7 +168,7 @@ class MongoDBConnectorITCase extends MongoDBSourceTestBase {
                 tEnv.executeSql(
                         "INSERT INTO sink SELECT name, SUM(weight) FROM mongodb_source GROUP BY name");
 
-        waitForSnapshotStarted("sink");
+        MongoDBTestUtils.waitForSnapshotStarted("sink");
 
         MongoCollection<Document> products =
                 mongodbClient.getDatabase(database).getCollection("products");
@@ -158,11 +202,11 @@ class MongoDBConnectorITCase extends MongoDBSourceTestBase {
                 Updates.set("weight", 5.17));
 
         // Delay delete operations to avoid unstable tests.
-        waitForSinkSize("sink", 19);
+        MongoDBTestUtils.waitForSinkSize("sink", 19);
 
         products.deleteOne(Filters.eq("_id", new ObjectId("100000000000000000000111")));
 
-        waitForSinkSize("sink", 20);
+        MongoDBTestUtils.waitForSinkSize("sink", 20);
 
         // The final database table looks like this:
         //
@@ -207,7 +251,7 @@ class MongoDBConnectorITCase extends MongoDBSourceTestBase {
         List<String> actual = TestValuesTableFactory.getResultsAsStrings("sink");
         Assertions.assertThat(actual).containsExactlyInAnyOrder(expected);
 
-        result.getJobClient().get().cancel().get();
+        result.getJobClient().orElseThrow().cancel().get();
     }
 
     @ParameterizedTest(name = "parallelismSnapshot: {0}")
@@ -244,8 +288,8 @@ class MongoDBConnectorITCase extends MongoDBSourceTestBase {
                                 + " 'heartbeat.interval.ms' = '1000'"
                                 + ")",
                         MONGO_CONTAINER.getHostAndPort(),
-                        FLINK_USER,
-                        FLINK_USER_PASSWORD,
+                        MongoDBContainer.FLINK_USER,
+                        MongoDBContainer.FLINK_USER_PASSWORD,
                         database,
                         "products",
                         parallelismSnapshot);
@@ -281,14 +325,14 @@ class MongoDBConnectorITCase extends MongoDBSourceTestBase {
         products.insertOne(
                 productDocOf("100000000000000000000111", "scooter", "Big 2-wheel scooter", 5.18));
 
-        waitForSinkSize("sink", 2);
+        MongoDBTestUtils.waitForSinkSize("sink", 2);
 
         String[] expected = new String[] {"jacket,0.200", "scooter,5.180"};
 
         List<String> actual = TestValuesTableFactory.getResultsAsStrings("sink");
         Assertions.assertThat(actual).containsExactlyInAnyOrder(expected);
 
-        result.getJobClient().get().cancel().get();
+        result.getJobClient().orElseThrow().cancel().get();
     }
 
     @ParameterizedTest(name = "parallelismSnapshot: {0}")
@@ -339,8 +383,8 @@ class MongoDBConnectorITCase extends MongoDBSourceTestBase {
                                 + " 'collection' = '%s'"
                                 + ")",
                         MONGO_CONTAINER.getHostAndPort(),
-                        FLINK_USER,
-                        FLINK_USER_PASSWORD,
+                        MongoDBContainer.FLINK_USER,
+                        MongoDBContainer.FLINK_USER_PASSWORD,
                         database,
                         "full_types");
 
@@ -416,7 +460,7 @@ class MongoDBConnectorITCase extends MongoDBSourceTestBase {
                                 + "dbReferenceField\n"
                                 + "FROM full_types");
 
-        waitForSnapshotStarted("sink");
+        MongoDBTestUtils.waitForSnapshotStarted("sink");
 
         MongoCollection<Document> fullTypes =
                 mongodbClient.getDatabase(database).getCollection("full_types");
@@ -425,7 +469,7 @@ class MongoDBConnectorITCase extends MongoDBSourceTestBase {
                 Filters.eq("_id", new ObjectId("5d505646cf6d4fe581014ab2")),
                 Updates.set("int64Field", 510L));
 
-        waitForSinkSize("sink", 3);
+        MongoDBTestUtils.waitForSinkSize("sink", 3);
 
         // 2021-09-03T18:36:04.123Z
         BsonDateTime updatedDateTime = new BsonDateTime(1630694164123L);
@@ -441,7 +485,7 @@ class MongoDBConnectorITCase extends MongoDBSourceTestBase {
                         Updates.set("timestampField", updatedTimestamp),
                         Updates.set("timestampToLocalTimestampField", updatedTimestamp)));
 
-        waitForSinkSize("sink", 5);
+        MongoDBTestUtils.waitForSinkSize("sink", 5);
 
         List<String> expected =
                 Arrays.asList(
@@ -453,7 +497,7 @@ class MongoDBConnectorITCase extends MongoDBSourceTestBase {
         List<String> actual = TestValuesTableFactory.getRawResultsAsStrings("sink");
         Assertions.assertThat(actual).containsExactlyInAnyOrderElementsOf(expected);
 
-        result.getJobClient().get().cancel().get();
+        result.getJobClient().orElseThrow().cancel().get();
     }
 
     @ParameterizedTest(name = "parallelismSnapshot: {0}")
@@ -483,8 +527,8 @@ class MongoDBConnectorITCase extends MongoDBSourceTestBase {
                                 + " 'scan.incremental.snapshot.enabled' = '%s'"
                                 + ")",
                         MONGO_CONTAINER.getHostAndPort(),
-                        FLINK_USER,
-                        FLINK_USER_PASSWORD,
+                        MongoDBContainer.FLINK_USER,
+                        MongoDBContainer.FLINK_USER_PASSWORD,
                         database,
                         "products",
                         parallelismSnapshot);
@@ -509,7 +553,7 @@ class MongoDBConnectorITCase extends MongoDBSourceTestBase {
         TableResult result = tEnv.executeSql("INSERT INTO meta_sink SELECT * FROM mongodb_source");
 
         // wait for snapshot finished and start change stream
-        waitForSinkSize("meta_sink", 9);
+        MongoDBTestUtils.waitForSinkSize("meta_sink", 9);
 
         MongoCollection<Document> products =
                 mongodbClient.getDatabase(database).getCollection("products");
@@ -543,11 +587,11 @@ class MongoDBConnectorITCase extends MongoDBSourceTestBase {
                 Updates.set("weight", 5.17));
 
         // Delay delete operations to avoid unstable tests.
-        waitForSinkSize("meta_sink", 15);
+        MongoDBTestUtils.waitForSinkSize("meta_sink", 15);
 
         products.deleteOne(Filters.eq("_id", new ObjectId("100000000000000000000111")));
 
-        waitForSinkSize("meta_sink", 16);
+        MongoDBTestUtils.waitForSinkSize("meta_sink", 16);
 
         List<String> expected =
                 Stream.of(
@@ -573,7 +617,7 @@ class MongoDBConnectorITCase extends MongoDBSourceTestBase {
 
         List<String> actual = TestValuesTableFactory.getRawResultsAsStrings("meta_sink");
         Assertions.assertThat(actual).containsExactlyInAnyOrderElementsOf(expected);
-        result.getJobClient().get().cancel().get();
+        result.getJobClient().orElseThrow().cancel().get();
     }
 
     private Document productDocOf(String id, String name, String description, Double weight) {

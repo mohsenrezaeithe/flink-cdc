@@ -50,7 +50,6 @@ public class MockPostgreSQLTableSource extends PostgreSQLTableSource {
                 (String) get(postgreSQLTableSource, "slotName"),
                 (DebeziumChangelogMode) get(postgreSQLTableSource, "changelogMode"),
                 (Properties) get(postgreSQLTableSource, "dbzProperties"),
-                (boolean) get(postgreSQLTableSource, "enableParallelRead"),
                 (int) get(postgreSQLTableSource, "splitSize"),
                 (int) get(postgreSQLTableSource, "splitMetaGroupSize"),
                 (int) get(postgreSQLTableSource, "fetchSize"),
@@ -80,7 +79,7 @@ public class MockPostgreSQLTableSource extends PostgreSQLTableSource {
             Preconditions.checkState(
                     source instanceof PostgresSourceBuilder.PostgresIncrementalSource);
 
-            PostgresSourceBuilder.PostgresIncrementalSource incrementalSource =
+            PostgresSourceBuilder.PostgresIncrementalSource<RowData> incrementalSource =
                     (PostgresSourceBuilder.PostgresIncrementalSource) source;
 
             try {

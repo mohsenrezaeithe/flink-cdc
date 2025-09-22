@@ -18,8 +18,10 @@
 package org.apache.flink.cdc.connectors.oceanbase;
 
 import org.apache.flink.api.common.JobID;
-import org.apache.flink.api.common.restartstrategy.RestartStrategies;
+import org.apache.flink.api.common.JobStatus;
 import org.apache.flink.cdc.connectors.utils.ExternalResourceProxy;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.RestartStrategyOptions;
 import org.apache.flink.runtime.minicluster.RpcServiceSharing;
 import org.apache.flink.runtime.testutils.MiniClusterResourceConfiguration;
 import org.apache.flink.streaming.api.CheckpointingMode;
@@ -43,6 +45,7 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
 import java.sql.SQLException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -53,9 +56,6 @@ import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.stream.Stream;
-
-import static java.lang.String.format;
-import static org.apache.flink.api.common.JobStatus.RUNNING;
 
 /** failover IT tests for oceanbase. */
 @Disabled(
@@ -146,13 +146,21 @@ public class OceanBaseFailoverITCase extends OceanBaseSourceTestBase {
     @MethodSource("parameters")
     public void testTaskManagerFailoverFromLatestOffset(String tableName, String chunkColumnName)
             throws Exception {
+        final Configuration restartStrategyConf = new Configuration();
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY,
+                RestartStrategyOptions.RestartStrategyType.FIXED_DELAY.getMainValue());
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_ATTEMPTS, 1);
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY_FIXED_DELAY_DELAY, Duration.ofSeconds(0));
         testMySqlParallelSource(
                 DEFAULT_PARALLELISM,
                 "latest-offset",
                 FailoverType.TM,
                 FailoverPhase.BINLOG,
                 new String[] {tableName, "customers_1"},
-                RestartStrategies.fixedDelayRestart(1, 0),
+                restartStrategyConf,
                 tableName,
                 chunkColumnName);
     }
@@ -185,13 +193,21 @@ public class OceanBaseFailoverITCase extends OceanBaseSourceTestBase {
     @MethodSource("parameters")
     public void testJobManagerFailoverFromLatestOffset(String tableName, String chunkColumnName)
             throws Exception {
+        final Configuration restartStrategyConf = new Configuration();
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY,
+                RestartStrategyOptions.RestartStrategyType.FIXED_DELAY.getMainValue());
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_ATTEMPTS, 1);
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY_FIXED_DELAY_DELAY, Duration.ofSeconds(0));
         testMySqlParallelSource(
                 DEFAULT_PARALLELISM,
                 "latest-offset",
                 FailoverType.JM,
                 FailoverPhase.BINLOG,
                 new String[] {tableName, "customers_1"},
-                RestartStrategies.fixedDelayRestart(1, 0),
+                restartStrategyConf,
                 tableName,
                 chunkColumnName);
     }
@@ -246,13 +262,21 @@ public class OceanBaseFailoverITCase extends OceanBaseSourceTestBase {
             String tableName,
             String chunkColumnName)
             throws Exception {
+        final Configuration restartStrategyConf = new Configuration();
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY,
+                RestartStrategyOptions.RestartStrategyType.FIXED_DELAY.getMainValue());
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_ATTEMPTS, 1);
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY_FIXED_DELAY_DELAY, Duration.ofSeconds(0));
         testMySqlParallelSource(
                 parallelism,
                 DEFAULT_SCAN_STARTUP_MODE,
                 failoverType,
                 failoverPhase,
                 captureCustomerTables,
-                RestartStrategies.fixedDelayRestart(1, 0),
+                restartStrategyConf,
                 tableName,
                 chunkColumnName);
     }
@@ -263,7 +287,7 @@ public class OceanBaseFailoverITCase extends OceanBaseSourceTestBase {
             FailoverType failoverType,
             FailoverPhase failoverPhase,
             String[] captureCustomerTables,
-            RestartStrategies.RestartStrategyConfiguration restartStrategyConfiguration,
+            Configuration restartStrategyConfiguration,
             String tableName,
             String chunkColumnName)
             throws Exception {
@@ -285,21 +309,21 @@ public class OceanBaseFailoverITCase extends OceanBaseSourceTestBase {
             FailoverType failoverType,
             FailoverPhase failoverPhase,
             String[] captureCustomerTables,
-            RestartStrategies.RestartStrategyConfiguration restartStrategyConfiguration,
+            Configuration restartStrategyConfiguration,
             boolean skipSnapshotBackfill,
             String tableName,
             String chunkColumnName)
             throws Exception {
         captureCustomerTables = new String[] {tableName};
-        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        StreamExecutionEnvironment env =
+                StreamExecutionEnvironment.getExecutionEnvironment(restartStrategyConfiguration);
         env.enableCheckpointing(3000L, CheckpointingMode.EXACTLY_ONCE);
         StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
 
         env.setParallelism(parallelism);
         env.enableCheckpointing(200L);
-        env.setRestartStrategy(restartStrategyConfiguration);
         String sourceDDL =
-                format(
+                String.format(
                         "CREATE TABLE customers ("
                                 + " id BIGINT NOT NULL,"
                                 + " name STRING,"
@@ -350,7 +374,7 @@ public class OceanBaseFailoverITCase extends OceanBaseSourceTestBase {
         checkBinlogData(tableResult, failoverType, failoverPhase, captureCustomerTables);
 
         //        sleepMs(3000);
-        tableResult.getJobClient().get().cancel().get();
+        tableResult.getJobClient().orElseThrow().cancel().get();
     }
 
     private void checkSnapshotData(
@@ -390,7 +414,7 @@ public class OceanBaseFailoverITCase extends OceanBaseSourceTestBase {
         }
 
         CloseableIterator<Row> iterator = tableResult.collect();
-        JobID jobId = tableResult.getJobClient().get().getJobID();
+        JobID jobId = tableResult.getJobClient().orElseThrow().getJobID();
 
         // trigger failover after some snapshot splits read finished
         if (failoverPhase == FailoverPhase.SNAPSHOT && iterator.hasNext()) {
@@ -413,7 +437,7 @@ public class OceanBaseFailoverITCase extends OceanBaseSourceTestBase {
             throws Exception {
         waitUntilJobRunning(tableResult);
         CloseableIterator<Row> iterator = tableResult.collect();
-        JobID jobId = tableResult.getJobClient().get().getJobID();
+        JobID jobId = tableResult.getJobClient().orElseThrow().getJobID();
 
         for (String tableId : captureCustomerTables) {
             makeFirstPartBinlogEvents(getConnection(), DEFAULT_TEST_DATABASE + '.' + tableId);
@@ -448,14 +472,15 @@ public class OceanBaseFailoverITCase extends OceanBaseSourceTestBase {
             throws InterruptedException, ExecutionException {
         do {
             Thread.sleep(5000L);
-        } while (tableResult.getJobClient().get().getJobStatus().get() != RUNNING);
+        } while (tableResult.getJobClient().orElseThrow().getJobStatus().get()
+                != JobStatus.RUNNING);
     }
 
     private boolean hasNextData(final CloseableIterator<?> iterator)
             throws InterruptedException, ExecutionException {
         ExecutorService executor = Executors.newSingleThreadExecutor();
         try {
-            FutureTask<Boolean> future = new FutureTask(iterator::hasNext);
+            FutureTask<Boolean> future = new FutureTask<>(iterator::hasNext);
             executor.execute(future);
             return future.get(3, TimeUnit.SECONDS);
         } catch (TimeoutException e) {
@@ -471,7 +496,7 @@ public class OceanBaseFailoverITCase extends OceanBaseSourceTestBase {
      */
     private void makeFirstPartBinlogEvents(JdbcConnection connection, String tableId)
             throws SQLException {
-        try {
+        try (connection) {
             connection.setAutoCommit(false);
 
             // make binlog events for the first split
@@ -481,8 +506,6 @@ public class OceanBaseFailoverITCase extends OceanBaseSourceTestBase {
                     "INSERT INTO " + tableId + " VALUES(102, 'user_2','Shanghai','123567891234')",
                     "UPDATE " + tableId + " SET address = 'Shanghai' where id = 103");
             connection.commit();
-        } finally {
-            connection.close();
         }
     }
 
@@ -492,7 +515,7 @@ public class OceanBaseFailoverITCase extends OceanBaseSourceTestBase {
      */
     private void makeSecondPartBinlogEvents(JdbcConnection connection, String tableId)
             throws SQLException {
-        try {
+        try (connection) {
             connection.setAutoCommit(false);
 
             // make binlog events for split-1
@@ -507,8 +530,6 @@ public class OceanBaseFailoverITCase extends OceanBaseSourceTestBase {
                             + " (2002, 'user_23','Shanghai','123567891234'),"
                             + "(2003, 'user_24','Shanghai','123567891234')");
             connection.commit();
-        } finally {
-            connection.close();
         }
     }
 

@@ -18,27 +18,72 @@
 package org.apache.flink.cdc.connectors.mongodb.table;
 
 import org.apache.flink.cdc.connectors.mongodb.source.MongoDBSourceTestBase;
+import org.apache.flink.cdc.connectors.mongodb.utils.MongoDBContainer;
+import org.apache.flink.cdc.connectors.mongodb.utils.MongoDBTestUtils;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.api.EnvironmentSettings;
 import org.apache.flink.table.api.TableResult;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 import org.apache.flink.table.planner.factories.TestValuesTableFactory;
 
+import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoDatabase;
 import org.assertj.core.api.Assertions;
 import org.bson.Document;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.testcontainers.containers.output.Slf4jLogConsumer;
+import org.testcontainers.lifecycle.Startables;
 
 import java.util.List;
-
-import static org.apache.flink.cdc.connectors.mongodb.utils.MongoDBContainer.FLINK_USER;
-import static org.apache.flink.cdc.connectors.mongodb.utils.MongoDBContainer.FLINK_USER_PASSWORD;
-import static org.apache.flink.cdc.connectors.mongodb.utils.MongoDBTestUtils.waitForSinkSize;
-import static org.apache.flink.cdc.connectors.mongodb.utils.MongoDBTestUtils.waitForSnapshotStarted;
+import java.util.stream.Stream;
 
 /** Integration tests to check mongodb-cdc works well under namespace.regex. */
 class MongoDBRegexFilterITCase extends MongoDBSourceTestBase {
+
+    private static final Logger LOG = LoggerFactory.getLogger(MongoDBRegexFilterITCase.class);
+
+    protected MongoClient mongodbClient;
+
+    private static final MongoDBContainer MONGO_CONTAINER =
+            new MongoDBContainer("mongo:" + getMongoVersion())
+                    .withSharding()
+                    .withLogConsumer(new Slf4jLogConsumer(LOG));
+
+    @BeforeAll
+    static void startContainers() {
+        LOG.info("Starting containers...");
+        Startables.deepStart(Stream.of(MONGO_CONTAINER)).join();
+        LOG.info("Containers are started.");
+    }
+
+    @AfterAll
+    static void stopContainers() {
+        LOG.info("Stopping containers...");
+        if (MONGO_CONTAINER != null) {
+            MONGO_CONTAINER.stop();
+        }
+        LOG.info("Containers are stopped.");
+    }
+
+    @BeforeEach
+    public void testSetup() {
+        mongodbClient = this.createClients(MONGO_CONTAINER);
+    }
+
+    @AfterEach
+    public void testDestroy() {
+        if (mongodbClient != null) {
+            mongodbClient.close();
+            mongodbClient = null;
+        }
+    }
 
     private final StreamExecutionEnvironment env =
             StreamExecutionEnvironment.getExecutionEnvironment();
@@ -72,7 +117,7 @@ class MongoDBRegexFilterITCase extends MongoDBSourceTestBase {
         TableResult result = submitTestCase(null, collectionRegex, parallelismSnapshot);
 
         // 3. Wait snapshot finished
-        waitForSinkSize("mongodb_sink", 4);
+        MongoDBTestUtils.waitForSinkSize("mongodb_sink", 4);
 
         // 4. Insert new records in database: [coll_a1.A102, coll_a2.A202, coll_b1.B102,
         // coll_b1.B102]
@@ -80,7 +125,7 @@ class MongoDBRegexFilterITCase extends MongoDBSourceTestBase {
         insertRecordsInDatabase(db1);
 
         // 5. Wait change stream records come
-        waitForSinkSize("mongodb_sink", 8);
+        MongoDBTestUtils.waitForSinkSize("mongodb_sink", 8);
 
         // 6. Check results
         String[] expected =
@@ -98,7 +143,7 @@ class MongoDBRegexFilterITCase extends MongoDBSourceTestBase {
         List<String> actual = TestValuesTableFactory.getRawResultsAsStrings("mongodb_sink");
         Assertions.assertThat(actual).containsExactlyInAnyOrder(expected);
 
-        result.getJobClient().get().cancel().get();
+        result.getJobClient().orElseThrow().cancel().get();
     }
 
     /** match multiple databases: database = db0|db1 . */
@@ -119,7 +164,7 @@ class MongoDBRegexFilterITCase extends MongoDBSourceTestBase {
         TableResult result = submitTestCase(databaseRegex, null, parallelismSnapshot);
 
         // 3. Wait snapshot finished
-        waitForSinkSize("mongodb_sink", 8);
+        MongoDBTestUtils.waitForSinkSize("mongodb_sink", 8);
 
         // 4. Insert new records in database: [coll_a1.A102, coll_a2.A202, coll_b1.B102,
         // coll_b1.B102]
@@ -128,7 +173,7 @@ class MongoDBRegexFilterITCase extends MongoDBSourceTestBase {
         insertRecordsInDatabase(db2);
 
         // 5. Wait change stream records come
-        waitForSinkSize("mongodb_sink", 16);
+        MongoDBTestUtils.waitForSinkSize("mongodb_sink", 16);
 
         // 6. Check results
         String[] expected =
@@ -154,7 +199,7 @@ class MongoDBRegexFilterITCase extends MongoDBSourceTestBase {
         List<String> actual = TestValuesTableFactory.getRawResultsAsStrings("mongodb_sink");
         Assertions.assertThat(actual).containsExactlyInAnyOrder(expected);
 
-        result.getJobClient().get().cancel().get();
+        result.getJobClient().orElseThrow().cancel().get();
     }
 
     /** match single database and multiple collections: collection = ^db0\.coll_b\d?$ . */
@@ -173,7 +218,7 @@ class MongoDBRegexFilterITCase extends MongoDBSourceTestBase {
         TableResult result = submitTestCase(null, collectionRegex, parallelismSnapshot);
 
         // 3. Wait snapshot finished
-        waitForSinkSize("mongodb_sink", 2);
+        MongoDBTestUtils.waitForSinkSize("mongodb_sink", 2);
 
         // 4. Insert new records in database: [coll_a1.A102, coll_a2.A202, coll_b1.B102,
         // coll_b1.B102]
@@ -181,7 +226,7 @@ class MongoDBRegexFilterITCase extends MongoDBSourceTestBase {
         insertRecordsInDatabase(db1);
 
         // 5. Wait change stream records come
-        waitForSinkSize("mongodb_sink", 4);
+        MongoDBTestUtils.waitForSinkSize("mongodb_sink", 4);
 
         // 6. Check results
         String[] expected =
@@ -195,7 +240,7 @@ class MongoDBRegexFilterITCase extends MongoDBSourceTestBase {
         List<String> actual = TestValuesTableFactory.getRawResultsAsStrings("mongodb_sink");
         Assertions.assertThat(actual).containsExactlyInAnyOrder(expected);
 
-        result.getJobClient().get().cancel().get();
+        result.getJobClient().orElseThrow().cancel().get();
     }
 
     /** match single database and multiple collections: database = db0 collection = .*coll_b\d? . */
@@ -215,7 +260,7 @@ class MongoDBRegexFilterITCase extends MongoDBSourceTestBase {
         TableResult result = submitTestCase(db0, collectionRegex, parallelismSnapshot);
 
         // 3. Wait snapshot finished
-        waitForSinkSize("mongodb_sink", 2);
+        MongoDBTestUtils.waitForSinkSize("mongodb_sink", 2);
 
         // 4. Insert new records in database: [coll_a1.A102, coll_a2.A202, coll_b1.B102,
         // coll_b1.B102]
@@ -223,7 +268,7 @@ class MongoDBRegexFilterITCase extends MongoDBSourceTestBase {
         insertRecordsInDatabase(db1);
 
         // 5. Wait change stream records come
-        waitForSinkSize("mongodb_sink", 4);
+        MongoDBTestUtils.waitForSinkSize("mongodb_sink", 4);
 
         // 6. Check results
         String[] expected =
@@ -237,7 +282,7 @@ class MongoDBRegexFilterITCase extends MongoDBSourceTestBase {
         List<String> actual = TestValuesTableFactory.getRawResultsAsStrings("mongodb_sink");
         Assertions.assertThat(actual).containsExactlyInAnyOrder(expected);
 
-        result.getJobClient().get().cancel().get();
+        result.getJobClient().orElseThrow().cancel().get();
     }
 
     @ParameterizedTest(name = "parallelismSnapshot: {0}")
@@ -251,7 +296,7 @@ class MongoDBRegexFilterITCase extends MongoDBSourceTestBase {
         TableResult result = submitTestCase(db0, "coll-a1", parallelismSnapshot);
 
         // 2. Wait change stream records come
-        waitForSinkSize("mongodb_sink", 1);
+        MongoDBTestUtils.waitForSinkSize("mongodb_sink", 1);
 
         // 3. Check results
         String[] expected = new String[] {String.format("+I[%s, coll-a1, A101]", db0)};
@@ -259,7 +304,7 @@ class MongoDBRegexFilterITCase extends MongoDBSourceTestBase {
         List<String> actual = TestValuesTableFactory.getRawResultsAsStrings("mongodb_sink");
         Assertions.assertThat(actual).containsExactlyInAnyOrder(expected);
 
-        result.getJobClient().get().cancel().get();
+        result.getJobClient().orElseThrow().cancel().get();
     }
 
     @ParameterizedTest(name = "parallelismSnapshot: {0}")
@@ -273,7 +318,7 @@ class MongoDBRegexFilterITCase extends MongoDBSourceTestBase {
         TableResult result = submitTestCase(db, db + "[.]coll[.]name", parallelismSnapshot);
 
         // 2. Wait change stream records come
-        waitForSinkSize("mongodb_sink", 3);
+        MongoDBTestUtils.waitForSinkSize("mongodb_sink", 3);
 
         // 3. Check results
         String[] expected =
@@ -286,7 +331,7 @@ class MongoDBRegexFilterITCase extends MongoDBSourceTestBase {
         List<String> actual = TestValuesTableFactory.getRawResultsAsStrings("mongodb_sink");
         Assertions.assertThat(actual).containsExactlyInAnyOrder(expected);
 
-        result.getJobClient().get().cancel().get();
+        result.getJobClient().orElseThrow().cancel().get();
     }
 
     private TableResult submitTestCase(
@@ -300,8 +345,8 @@ class MongoDBRegexFilterITCase extends MongoDBSourceTestBase {
                         + " PRIMARY KEY (_id) NOT ENFORCED"
                         + ") WITH ("
                         + ignoreIfNull("hosts", MONGO_CONTAINER.getHostAndPort())
-                        + ignoreIfNull("username", FLINK_USER)
-                        + ignoreIfNull("password", FLINK_USER_PASSWORD)
+                        + ignoreIfNull("username", MongoDBContainer.FLINK_USER)
+                        + ignoreIfNull("password", MongoDBContainer.FLINK_USER_PASSWORD)
                         + ignoreIfNull("database", database)
                         + ignoreIfNull("collection", collection)
                         + " 'scan.incremental.snapshot.enabled' = '"
@@ -328,7 +373,7 @@ class MongoDBRegexFilterITCase extends MongoDBSourceTestBase {
                 tEnv.executeSql(
                         "INSERT INTO mongodb_sink SELECT db_name, coll_name, seq FROM mongodb_source");
 
-        waitForSnapshotStarted("mongodb_sink");
+        MongoDBTestUtils.waitForSnapshotStarted("mongodb_sink");
 
         return result;
     }

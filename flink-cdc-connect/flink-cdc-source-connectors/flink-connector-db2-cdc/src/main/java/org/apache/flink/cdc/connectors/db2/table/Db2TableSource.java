@@ -20,17 +20,14 @@ package org.apache.flink.cdc.connectors.db2.table;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.cdc.connectors.base.options.StartupOptions;
 import org.apache.flink.cdc.connectors.base.source.jdbc.JdbcIncrementalSource;
-import org.apache.flink.cdc.connectors.db2.Db2Source;
 import org.apache.flink.cdc.connectors.db2.source.Db2SourceBuilder;
 import org.apache.flink.cdc.debezium.DebeziumDeserializationSchema;
-import org.apache.flink.cdc.debezium.DebeziumSourceFunction;
 import org.apache.flink.cdc.debezium.table.MetadataConverter;
 import org.apache.flink.cdc.debezium.table.RowDataDebeziumDeserializeSchema;
 import org.apache.flink.table.catalog.ResolvedSchema;
 import org.apache.flink.table.connector.ChangelogMode;
 import org.apache.flink.table.connector.source.DynamicTableSource;
 import org.apache.flink.table.connector.source.ScanTableSource;
-import org.apache.flink.table.connector.source.SourceFunctionProvider;
 import org.apache.flink.table.connector.source.SourceProvider;
 import org.apache.flink.table.connector.source.abilities.SupportsReadingMetadata;
 import org.apache.flink.table.data.RowData;
@@ -65,7 +62,6 @@ public class Db2TableSource implements ScanTableSource, SupportsReadingMetadata 
     private final ZoneId serverTimeZone;
     private final StartupOptions startupOptions;
     private final Properties dbzProperties;
-    private final boolean enableParallelRead;
     private final int splitSize;
     private final int splitMetaGroupSize;
     private final int fetchSize;
@@ -93,7 +89,6 @@ public class Db2TableSource implements ScanTableSource, SupportsReadingMetadata 
             ZoneId serverTimeZone,
             Properties dbzProperties,
             StartupOptions startupOptions,
-            boolean enableParallelRead,
             int splitSize,
             int splitMetaGroupSize,
             int fetchSize,
@@ -118,7 +113,6 @@ public class Db2TableSource implements ScanTableSource, SupportsReadingMetadata 
         this.startupOptions = startupOptions;
         this.producedDataType = physicalSchema.toPhysicalRowDataType();
         this.metadataKeys = Collections.emptyList();
-        this.enableParallelRead = enableParallelRead;
         this.splitSize = splitSize;
         this.splitMetaGroupSize = splitMetaGroupSize;
         this.fetchSize = fetchSize;
@@ -153,48 +147,32 @@ public class Db2TableSource implements ScanTableSource, SupportsReadingMetadata 
                         .setServerTimeZone(serverTimeZone)
                         .build();
 
-        if (enableParallelRead) {
-            JdbcIncrementalSource<RowData> db2ChangeEventSource =
-                    Db2SourceBuilder.Db2IncrementalSource.<RowData>builder()
-                            .hostname(hostname)
-                            .port(port)
-                            .databaseList(database)
-                            .tableList(tableName)
-                            .serverTimeZone(serverTimeZone.toString())
-                            .username(username)
-                            .password(password)
-                            .startupOptions(startupOptions)
-                            .deserializer(deserializer)
-                            .debeziumProperties(dbzProperties)
-                            .splitSize(splitSize)
-                            .splitMetaGroupSize(splitMetaGroupSize)
-                            .fetchSize(fetchSize)
-                            .connectTimeout(connectTimeout)
-                            .connectionPoolSize(connectionPoolSize)
-                            .connectMaxRetries(connectMaxRetries)
-                            .distributionFactorUpper(distributionFactorUpper)
-                            .distributionFactorLower(distributionFactorLower)
-                            .chunkKeyColumn(chunkKeyColumn)
-                            .closeIdleReaders(closeIdleReaders)
-                            .skipSnapshotBackfill(skipSnapshotBackfill)
-                            .assignUnboundedChunkFirst(assignUnboundedChunkFirst)
-                            .build();
-            return SourceProvider.of(db2ChangeEventSource);
-        } else {
-            Db2Source.Builder<RowData> builder =
-                    Db2Source.<RowData>builder()
-                            .hostname(hostname)
-                            .port(port)
-                            .database(database)
-                            .tableList(tableName)
-                            .username(username)
-                            .password(password)
-                            .debeziumProperties(dbzProperties)
-                            .deserializer(deserializer)
-                            .startupOptions(startupOptions);
-            DebeziumSourceFunction<RowData> sourceFunction = builder.build();
-            return SourceFunctionProvider.of(sourceFunction, false);
-        }
+        JdbcIncrementalSource<RowData> db2ChangeEventSource =
+                Db2SourceBuilder.Db2IncrementalSource.<RowData>builder()
+                        .hostname(hostname)
+                        .port(port)
+                        .databaseList(database)
+                        .tableList(tableName)
+                        .serverTimeZone(serverTimeZone.toString())
+                        .username(username)
+                        .password(password)
+                        .startupOptions(startupOptions)
+                        .deserializer(deserializer)
+                        .debeziumProperties(dbzProperties)
+                        .splitSize(splitSize)
+                        .splitMetaGroupSize(splitMetaGroupSize)
+                        .fetchSize(fetchSize)
+                        .connectTimeout(connectTimeout)
+                        .connectionPoolSize(connectionPoolSize)
+                        .connectMaxRetries(connectMaxRetries)
+                        .distributionFactorUpper(distributionFactorUpper)
+                        .distributionFactorLower(distributionFactorLower)
+                        .chunkKeyColumn(chunkKeyColumn)
+                        .closeIdleReaders(closeIdleReaders)
+                        .skipSnapshotBackfill(skipSnapshotBackfill)
+                        .assignUnboundedChunkFirst(assignUnboundedChunkFirst)
+                        .build();
+        return SourceProvider.of(db2ChangeEventSource);
     }
 
     private MetadataConverter[] getMetadataConverters() {
@@ -227,7 +205,6 @@ public class Db2TableSource implements ScanTableSource, SupportsReadingMetadata 
                         serverTimeZone,
                         dbzProperties,
                         startupOptions,
-                        enableParallelRead,
                         splitSize,
                         splitMetaGroupSize,
                         fetchSize,
@@ -264,7 +241,6 @@ public class Db2TableSource implements ScanTableSource, SupportsReadingMetadata 
                 && Objects.equals(serverTimeZone, that.serverTimeZone)
                 && Objects.equals(dbzProperties, that.dbzProperties)
                 && Objects.equals(metadataKeys, that.metadataKeys)
-                && Objects.equals(enableParallelRead, that.enableParallelRead)
                 && Objects.equals(splitSize, that.splitSize)
                 && Objects.equals(splitMetaGroupSize, that.splitMetaGroupSize)
                 && Objects.equals(fetchSize, that.fetchSize)
@@ -292,7 +268,6 @@ public class Db2TableSource implements ScanTableSource, SupportsReadingMetadata 
                 serverTimeZone,
                 dbzProperties,
                 metadataKeys,
-                enableParallelRead,
                 splitSize,
                 splitMetaGroupSize,
                 fetchSize,

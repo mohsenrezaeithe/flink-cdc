@@ -19,23 +19,33 @@ package org.apache.flink.cdc.connectors.mongodb.source;
 
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
-import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.cdc.connectors.base.options.StartupOptions;
 import org.apache.flink.cdc.connectors.base.source.utils.hooks.SnapshotPhaseHook;
 import org.apache.flink.cdc.connectors.base.source.utils.hooks.SnapshotPhaseHooks;
 import org.apache.flink.cdc.connectors.mongodb.source.config.MongoDBSourceConfig;
 import org.apache.flink.cdc.connectors.mongodb.source.config.MongoDBSourceConfigFactory;
 import org.apache.flink.cdc.connectors.mongodb.source.utils.MongoUtils;
+import org.apache.flink.cdc.connectors.mongodb.utils.MongoDBAssertUtils;
+import org.apache.flink.cdc.connectors.mongodb.utils.MongoDBContainer;
 import org.apache.flink.cdc.connectors.mongodb.utils.MongoDBTestUtils;
 import org.apache.flink.cdc.connectors.mongodb.utils.TestTable;
+import org.apache.flink.cdc.connectors.utils.ExternalResourceProxy;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.RestartStrategyOptions;
+import org.apache.flink.runtime.minicluster.RpcServiceSharing;
+import org.apache.flink.runtime.testutils.MiniClusterResourceConfiguration;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.table.api.DataTypes;
 import org.apache.flink.table.api.TableResult;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
+import org.apache.flink.table.catalog.Column;
 import org.apache.flink.table.catalog.ResolvedSchema;
 import org.apache.flink.table.catalog.UniqueConstraint;
 import org.apache.flink.table.data.RowData;
+import org.apache.flink.test.util.MiniClusterWithClientResource;
 import org.apache.flink.types.Row;
 import org.apache.flink.util.CloseableIterator;
+import org.apache.flink.util.Preconditions;
 
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoCollection;
@@ -44,11 +54,21 @@ import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Updates;
 import org.assertj.core.api.Assertions;
 import org.bson.Document;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.testcontainers.containers.output.Slf4jLogConsumer;
+import org.testcontainers.lifecycle.Startables;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -58,27 +78,76 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import static org.apache.flink.cdc.connectors.mongodb.utils.MongoDBAssertUtils.assertEqualsInAnyOrder;
-import static org.apache.flink.cdc.connectors.mongodb.utils.MongoDBContainer.FLINK_USER;
-import static org.apache.flink.cdc.connectors.mongodb.utils.MongoDBContainer.FLINK_USER_PASSWORD;
-import static org.apache.flink.cdc.connectors.mongodb.utils.MongoDBTestUtils.fetchRowData;
-import static org.apache.flink.cdc.connectors.mongodb.utils.MongoDBTestUtils.fetchRows;
-import static org.apache.flink.cdc.connectors.mongodb.utils.MongoDBTestUtils.triggerFailover;
-import static org.apache.flink.table.api.DataTypes.BIGINT;
-import static org.apache.flink.table.api.DataTypes.STRING;
-import static org.apache.flink.table.catalog.Column.physical;
-import static org.apache.flink.util.Preconditions.checkState;
-
 /** Integration tests for MongoDB full document before change info. */
 @Timeout(value = 300, unit = TimeUnit.SECONDS)
 class MongoDBFullChangelogITCase extends MongoDBSourceTestBase {
+
+    private static final Logger LOG = LoggerFactory.getLogger(MongoDBFullChangelogITCase.class);
+
+    protected MongoClient mongodbClient;
+
+    private static final MongoDBContainer MONGO_CONTAINER =
+            new MongoDBContainer("mongo:" + getMongoVersion())
+                    .withSharding()
+                    .withLogConsumer(new Slf4jLogConsumer(LOG));
+
+    @BeforeAll
+    static void startContainers() {
+        LOG.info("Starting containers...");
+        Startables.deepStart(Stream.of(MONGO_CONTAINER)).join();
+        LOG.info("Containers are started.");
+    }
+
+    @AfterAll
+    static void stopContainers() {
+        LOG.info("Stopping containers...");
+        if (MONGO_CONTAINER != null) {
+            MONGO_CONTAINER.stop();
+        }
+        LOG.info("Containers are stopped.");
+    }
+
+    @BeforeEach
+    public void testSetup() {
+        mongodbClient = this.createClients(MONGO_CONTAINER);
+    }
+
+    @AfterEach
+    public void testDestroy() {
+        if (mongodbClient != null) {
+            mongodbClient.close();
+            mongodbClient = null;
+        }
+    }
+
+    @RegisterExtension
+    public final ExternalResourceProxy<MiniClusterWithClientResource> miniClusterResource =
+            new ExternalResourceProxy<>(
+                    new MiniClusterWithClientResource(
+                            new MiniClusterResourceConfiguration.Builder()
+                                    .setNumberTaskManagers(1)
+                                    .setNumberSlotsPerTaskManager(DEFAULT_PARALLELISM)
+                                    .setRpcServiceSharing(RpcServiceSharing.DEDICATED)
+                                    .setConfiguration(
+                                            metricReporter.addToConfiguration(new Configuration()))
+                                    .withHaLeadershipControl()
+                                    .build()));
 
     private static final int USE_POST_LOWWATERMARK_HOOK = 1;
     private static final int USE_PRE_HIGHWATERMARK_HOOK = 2;
     private static final int USE_POST_HIGHWATERMARK_HOOK = 3;
 
-    private static final StreamExecutionEnvironment env =
-            StreamExecutionEnvironment.getExecutionEnvironment();
+    private static final StreamExecutionEnvironment env;
+
+    static {
+        final Configuration conf = new Configuration();
+        conf.set(
+                RestartStrategyOptions.RESTART_STRATEGY,
+                RestartStrategyOptions.RestartStrategyType.FIXED_DELAY.getMainValue());
+        conf.set(RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_ATTEMPTS, 1);
+        conf.set(RestartStrategyOptions.RESTART_STRATEGY_FIXED_DELAY_DELAY, Duration.ofSeconds(0));
+        env = StreamExecutionEnvironment.getExecutionEnvironment(conf);
+    }
 
     @Test
     void testGetMongoDBVersion() {
@@ -237,7 +306,7 @@ class MongoDBFullChangelogITCase extends MongoDBSourceTestBase {
                         "+I[1018, user_19, Shanghai, 123567891234]",
                         "+I[1019, user_20, Shanghai, 123567891234]",
                         "+I[2000, user_21, Shanghai, 123567891234]");
-        assertEqualsInAnyOrder(expectedRecords, records);
+        MongoDBAssertUtils.assertEqualsInAnyOrder(expectedRecords, records);
     }
 
     @Test
@@ -271,7 +340,7 @@ class MongoDBFullChangelogITCase extends MongoDBSourceTestBase {
                         "+I[15213, user_15213, Shanghai, 123567891234]");
         // when enable backfill, the wal log between (snapshot, high_watermark) will be
         // applied as snapshot image
-        assertEqualsInAnyOrder(expectedRecords, records);
+        MongoDBAssertUtils.assertEqualsInAnyOrder(expectedRecords, records);
     }
 
     @Test
@@ -305,7 +374,7 @@ class MongoDBFullChangelogITCase extends MongoDBSourceTestBase {
                         "+I[15213, user_15213, Shanghai, 123567891234]");
         // when enable backfill, the wal log between (snapshot, high_watermark) will be
         // applied as snapshot image
-        assertEqualsInAnyOrder(expectedRecords, records);
+        MongoDBAssertUtils.assertEqualsInAnyOrder(expectedRecords, records);
     }
 
     @Test
@@ -339,7 +408,7 @@ class MongoDBFullChangelogITCase extends MongoDBSourceTestBase {
                         "+I[15213, user_15213, Shanghai, 123567891234]");
         // when enable backfill, the wal log between (low_watermark, snapshot) will be applied
         // as snapshot image
-        assertEqualsInAnyOrder(expectedRecords, records);
+        MongoDBAssertUtils.assertEqualsInAnyOrder(expectedRecords, records);
     }
 
     @Test
@@ -374,7 +443,7 @@ class MongoDBFullChangelogITCase extends MongoDBSourceTestBase {
                         "-U[2000, user_21, Shanghai, 123567891234]",
                         "+U[2000, user_21, Pittsburgh, 123567891234]",
                         "-D[1019, user_20, Shanghai, 123567891234]");
-        assertEqualsInAnyOrder(expectedRecords, records);
+        MongoDBAssertUtils.assertEqualsInAnyOrder(expectedRecords, records);
     }
 
     @Test
@@ -412,7 +481,7 @@ class MongoDBFullChangelogITCase extends MongoDBSourceTestBase {
                         "-D[1019, user_20, Shanghai, 123567891234]");
         // when skip backfill, the wal log between (snapshot, high_watermark) will be seen as
         // stream event.
-        assertEqualsInAnyOrder(expectedRecords, records);
+        MongoDBAssertUtils.assertEqualsInAnyOrder(expectedRecords, records);
     }
 
     @Test
@@ -451,7 +520,7 @@ class MongoDBFullChangelogITCase extends MongoDBSourceTestBase {
         // when skip backfill, the wal log between (snapshot,  high_watermark) will still be
         // seen as stream event. This will occur data duplicate. For example, user_20 will be
         // deleted twice, and user_15213 will be inserted twice.
-        assertEqualsInAnyOrder(expectedRecords, records);
+        MongoDBAssertUtils.assertEqualsInAnyOrder(expectedRecords, records);
     }
 
     private List<String> testBackfillWhenWritingEvents(
@@ -479,10 +548,10 @@ class MongoDBFullChangelogITCase extends MongoDBSourceTestBase {
         ResolvedSchema customersSchema =
                 new ResolvedSchema(
                         Arrays.asList(
-                                physical("cid", BIGINT().notNull()),
-                                physical("name", STRING()),
-                                physical("address", STRING()),
-                                physical("phone_number", STRING())),
+                                Column.physical("cid", DataTypes.BIGINT().notNull()),
+                                Column.physical("name", DataTypes.STRING()),
+                                Column.physical("address", DataTypes.STRING()),
+                                Column.physical("phone_number", DataTypes.STRING())),
                         new ArrayList<>(),
                         UniqueConstraint.primaryKey("pk", Collections.singletonList("cid")));
         TestTable customerTable = new TestTable(customerDatabase, "customers", customersSchema);
@@ -490,8 +559,8 @@ class MongoDBFullChangelogITCase extends MongoDBSourceTestBase {
                 new MongoDBSourceBuilder<RowData>()
                         .hosts(MONGO_CONTAINER.getHostAndPort())
                         .databaseList(customerDatabase)
-                        .username(FLINK_USER)
-                        .password(FLINK_USER_PASSWORD)
+                        .username(MongoDBContainer.FLINK_USER)
+                        .password(MongoDBContainer.FLINK_USER_PASSWORD)
                         .startupOptions(startupOptions)
                         .scanFullChangelog(true)
                         .collectionList(
@@ -543,14 +612,14 @@ class MongoDBFullChangelogITCase extends MongoDBSourceTestBase {
         }
         source.setSnapshotHooks(hooks);
 
-        List<String> records = new ArrayList<>();
         try (CloseableIterator<RowData> iterator =
                 env.fromSource(source, WatermarkStrategy.noWatermarks(), "Backfill Skipped Source")
                         .executeAndCollect()) {
-            records = fetchRowData(iterator, fetchSize, customerTable::stringify);
+            List<String> records =
+                    MongoDBTestUtils.fetchRowData(iterator, fetchSize, customerTable::stringify);
             env.close();
+            return records;
         }
-        return records;
     }
 
     @ParameterizedTest(name = "parallelismSnapshot: {0}")
@@ -582,11 +651,18 @@ class MongoDBFullChangelogITCase extends MongoDBSourceTestBase {
                     customerDatabase);
         }
 
+        final Configuration conf = new Configuration();
+        conf.set(
+                RestartStrategyOptions.RESTART_STRATEGY,
+                RestartStrategyOptions.RestartStrategyType.FIXED_DELAY.getMainValue());
+        conf.set(RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_ATTEMPTS, 1);
+        conf.set(RestartStrategyOptions.RESTART_STRATEGY_FIXED_DELAY_DELAY, Duration.ofSeconds(0));
+        final StreamExecutionEnvironment env =
+                StreamExecutionEnvironment.getExecutionEnvironment(conf);
         StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
 
         env.setParallelism(parallelism);
         env.enableCheckpointing(200L);
-        env.setRestartStrategy(RestartStrategies.fixedDelayRestart(1, 0));
 
         String sourceDDL =
                 String.format(
@@ -614,8 +690,8 @@ class MongoDBFullChangelogITCase extends MongoDBSourceTestBase {
                                 + ")",
                         parallelismSnapshot ? "true" : "false",
                         MONGO_CONTAINER.getHostAndPort(),
-                        FLINK_USER,
-                        FLINK_USER_PASSWORD,
+                        MongoDBContainer.FLINK_USER,
+                        MongoDBContainer.FLINK_USER_PASSWORD,
                         customerDatabase,
                         getCollectionNameRegex(customerDatabase, captureCustomerCollections),
                         skipSnapshotBackfill);
@@ -655,14 +731,14 @@ class MongoDBFullChangelogITCase extends MongoDBSourceTestBase {
                         "select database_name, collection_name, row_kind, "
                                 + "cid, name, address, phone_number from customers");
         CloseableIterator<Row> iterator = tableResult.collect();
-        JobID jobId = tableResult.getJobClient().get().getJobID();
         List<String> expectedSnapshotData = new ArrayList<>();
         for (int i = 0; i < captureCustomerCollections.length; i++) {
             expectedSnapshotData.addAll(snapshotForSingleTable);
         }
 
-        assertEqualsInAnyOrder(
-                expectedSnapshotData, fetchRows(iterator, expectedSnapshotData.size()));
+        MongoDBAssertUtils.assertEqualsInAnyOrder(
+                expectedSnapshotData,
+                MongoDBTestUtils.fetchRows(iterator, expectedSnapshotData.size()));
 
         // second step: check the change stream data
         for (String collectionName : captureCustomerCollections) {
@@ -693,9 +769,10 @@ class MongoDBFullChangelogITCase extends MongoDBSourceTestBase {
         for (int i = 0; i < captureCustomerCollections.length; i++) {
             expectedChangeStreamData.addAll(changeEventsForSingleTable);
         }
-        List<String> actualChangeStreamData = fetchRows(iterator, expectedChangeStreamData.size());
-        assertEqualsInAnyOrder(expectedChangeStreamData, actualChangeStreamData);
-        tableResult.getJobClient().get().cancel().get();
+        List<String> actualChangeStreamData =
+                MongoDBTestUtils.fetchRows(iterator, expectedChangeStreamData.size());
+        MongoDBAssertUtils.assertEqualsInAnyOrder(expectedChangeStreamData, actualChangeStreamData);
+        tableResult.getJobClient().orElseThrow().cancel().get();
     }
 
     private void testMongoDBParallelSource(
@@ -757,7 +834,6 @@ class MongoDBFullChangelogITCase extends MongoDBSourceTestBase {
 
         env.setParallelism(parallelism);
         env.enableCheckpointing(200L);
-        env.setRestartStrategy(RestartStrategies.fixedDelayRestart(1, 0));
 
         String sourceDDL =
                 String.format(
@@ -782,8 +858,8 @@ class MongoDBFullChangelogITCase extends MongoDBSourceTestBase {
                                 + ")",
                         parallelismSnapshot ? "true" : "false",
                         MONGO_CONTAINER.getHostAndPort(),
-                        FLINK_USER,
-                        FLINK_USER_PASSWORD,
+                        MongoDBContainer.FLINK_USER,
+                        MongoDBContainer.FLINK_USER_PASSWORD,
                         customerDatabase,
                         getCollectionNameRegex(customerDatabase, captureCustomerCollections),
                         skipSnapshotBackfill);
@@ -819,7 +895,7 @@ class MongoDBFullChangelogITCase extends MongoDBSourceTestBase {
         TableResult tableResult =
                 tEnv.executeSql("select cid, name, address, phone_number from customers");
         CloseableIterator<Row> iterator = tableResult.collect();
-        JobID jobId = tableResult.getJobClient().get().getJobID();
+        JobID jobId = tableResult.getJobClient().orElseThrow().getJobID();
         List<String> expectedSnapshotData = new ArrayList<>();
         for (int i = 0; i < captureCustomerCollections.length; i++) {
             expectedSnapshotData.addAll(Arrays.asList(snapshotForSingleTable));
@@ -827,15 +903,16 @@ class MongoDBFullChangelogITCase extends MongoDBSourceTestBase {
 
         // trigger failover after some snapshot splits read finished
         if (failoverPhase == MongoDBTestUtils.FailoverPhase.SNAPSHOT && iterator.hasNext()) {
-            triggerFailover(
+            MongoDBTestUtils.triggerFailover(
                     failoverType,
                     jobId,
                     miniClusterResource.get().getMiniCluster(),
                     () -> sleepMs(100));
         }
 
-        assertEqualsInAnyOrder(
-                expectedSnapshotData, fetchRows(iterator, expectedSnapshotData.size()));
+        MongoDBAssertUtils.assertEqualsInAnyOrder(
+                expectedSnapshotData,
+                MongoDBTestUtils.fetchRows(iterator, expectedSnapshotData.size()));
 
         // second step: check the change stream data
         for (String collectionName : captureCustomerCollections) {
@@ -843,7 +920,7 @@ class MongoDBFullChangelogITCase extends MongoDBSourceTestBase {
                     mongodbClient.getDatabase(customerDatabase), collectionName);
         }
         if (failoverPhase == MongoDBTestUtils.FailoverPhase.STREAM) {
-            triggerFailover(
+            MongoDBTestUtils.triggerFailover(
                     failoverType,
                     jobId,
                     miniClusterResource.get().getMiniCluster(),
@@ -872,13 +949,14 @@ class MongoDBFullChangelogITCase extends MongoDBSourceTestBase {
         for (int i = 0; i < captureCustomerCollections.length; i++) {
             expectedChangeStreamData.addAll(Arrays.asList(changeEventsForSingleTable));
         }
-        List<String> actualChangeStreamData = fetchRows(iterator, expectedChangeStreamData.size());
-        assertEqualsInAnyOrder(expectedChangeStreamData, actualChangeStreamData);
+        List<String> actualChangeStreamData =
+                MongoDBTestUtils.fetchRows(iterator, expectedChangeStreamData.size());
+        MongoDBAssertUtils.assertEqualsInAnyOrder(expectedChangeStreamData, actualChangeStreamData);
         tableResult.getJobClient().get().cancel().get();
     }
 
     private String getCollectionNameRegex(String database, String[] captureCustomerCollections) {
-        checkState(captureCustomerCollections.length > 0);
+        Preconditions.checkState(captureCustomerCollections.length > 0);
         if (captureCustomerCollections.length == 1) {
             return database + "." + captureCustomerCollections[0];
         } else {

@@ -54,7 +54,10 @@ public class DataSinkWriterOperatorFactory<CommT>
         if (isBounded) {
             BatchDataSinkWriterOperator<CommT> writerOperator =
                     new BatchDataSinkWriterOperator<>(
-                            parameters, sink, processingTimeService, getMailboxExecutor());
+                            parameters,
+                            sink,
+                            processingTimeService,
+                            parameters.getMailboxExecutor());
             writerOperator.setup(
                     parameters.getContainingTask(),
                     parameters.getStreamConfig(),
@@ -66,7 +69,7 @@ public class DataSinkWriterOperatorFactory<CommT>
                         parameters,
                         sink,
                         processingTimeService,
-                        getMailboxExecutor(),
+                        parameters.getMailboxExecutor(),
                         schemaOperatorID);
         writerOperator.setup(
                 parameters.getContainingTask(),

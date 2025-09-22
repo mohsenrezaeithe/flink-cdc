@@ -22,6 +22,7 @@ import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.connector.source.ReaderOutput;
 import org.apache.flink.api.connector.source.SourceOutput;
 import org.apache.flink.cdc.connectors.base.source.meta.split.SnapshotSplit;
+import org.apache.flink.cdc.connectors.base.source.meta.split.SourceSplitBase;
 import org.apache.flink.cdc.connectors.postgres.PostgresTestBase;
 import org.apache.flink.cdc.connectors.postgres.source.MockPostgresDialect;
 import org.apache.flink.cdc.connectors.postgres.source.PostgresSourceBuilder;
@@ -83,31 +84,33 @@ public class PostgresSourceReaderTest extends PostgresTestBase {
 
     @Test
     void testNotifyCheckpointWindowSizeOne() throws Exception {
-        final PostgresSourceReader reader = createReader(1);
-        final List<Long> completedCheckpointIds = new ArrayList<>();
-        MockPostgresDialect.setNotifyCheckpointCompleteCallback(
-                id -> completedCheckpointIds.add(id));
-        reader.notifyCheckpointComplete(11L);
-        assertThat(completedCheckpointIds).isEmpty();
-        reader.notifyCheckpointComplete(12L);
-        assertThat(completedCheckpointIds).containsExactly(11L);
-        reader.notifyCheckpointComplete(13L);
+        final List<Long> completedCheckpointIds;
+        try (PostgresSourceReader<SourceRecord> reader = createReader(1)) {
+            completedCheckpointIds = new ArrayList<>();
+            MockPostgresDialect.setNotifyCheckpointCompleteCallback(completedCheckpointIds::add);
+            reader.notifyCheckpointComplete(11L);
+            assertThat(completedCheckpointIds).isEmpty();
+            reader.notifyCheckpointComplete(12L);
+            assertThat(completedCheckpointIds).containsExactly(11L);
+            reader.notifyCheckpointComplete(13L);
+        }
         assertThat(completedCheckpointIds).containsExactly(11L, 12L);
     }
 
     @Test
     void testNotifyCheckpointWindowSizeDefault() throws Exception {
-        final PostgresSourceReader reader = createReader(3);
-        final List<Long> completedCheckpointIds = new ArrayList<>();
-        MockPostgresDialect.setNotifyCheckpointCompleteCallback(
-                id -> completedCheckpointIds.add(id));
-        reader.notifyCheckpointComplete(103L);
-        assertThat(completedCheckpointIds).isEmpty();
-        reader.notifyCheckpointComplete(102L);
-        assertThat(completedCheckpointIds).isEmpty();
-        reader.notifyCheckpointComplete(101L);
-        assertThat(completedCheckpointIds).isEmpty();
-        reader.notifyCheckpointComplete(104L);
+        final List<Long> completedCheckpointIds;
+        try (PostgresSourceReader<SourceRecord> reader = createReader(3)) {
+            completedCheckpointIds = new ArrayList<>();
+            MockPostgresDialect.setNotifyCheckpointCompleteCallback(completedCheckpointIds::add);
+            reader.notifyCheckpointComplete(103L);
+            assertThat(completedCheckpointIds).isEmpty();
+            reader.notifyCheckpointComplete(102L);
+            assertThat(completedCheckpointIds).isEmpty();
+            reader.notifyCheckpointComplete(101L);
+            assertThat(completedCheckpointIds).isEmpty();
+            reader.notifyCheckpointComplete(104L);
+        }
         assertThat(completedCheckpointIds).containsExactly(101L);
     }
 
@@ -125,7 +128,7 @@ public class PostgresSourceReaderTest extends PostgresTestBase {
         RowType splitType =
                 RowType.of(
                         new LogicalType[] {DataTypes.INT().getLogicalType()}, new String[] {"Id"});
-        List<SnapshotSplit> snapshotSplits =
+        List<SourceSplitBase> snapshotSplits =
                 Arrays.asList(
                         new SnapshotSplit(
                                 tableId,
@@ -153,7 +156,7 @@ public class PostgresSourceReaderTest extends PostgresTestBase {
                                 Collections.emptyMap()));
 
         // Step 1: start source reader and assign snapshot splits
-        PostgresSourceReader reader = createReader(-1, skipBackFill);
+        PostgresSourceReader<SourceRecord> reader = createReader(-1, skipBackFill);
         reader.start();
         reader.addSplits(snapshotSplits);
 
@@ -187,7 +190,7 @@ public class PostgresSourceReaderTest extends PostgresTestBase {
     }
 
     private List<String> consumeSnapshotRecords(
-            PostgresSourceReader sourceReader, DataType recordType) throws Exception {
+            PostgresSourceReader<SourceRecord> sourceReader, DataType recordType) throws Exception {
         // Poll all the  records of the multiple assigned snapshot split.
         sourceReader.notifyNoMoreSplits();
         final SimpleReaderOutput output = new SimpleReaderOutput();
@@ -199,13 +202,12 @@ public class PostgresSourceReaderTest extends PostgresTestBase {
         return formatter.format(output.getResults());
     }
 
-    private PostgresSourceReader createReader(final int lsnCommitCheckpointsDelay)
-            throws Exception {
+    private PostgresSourceReader<SourceRecord> createReader(final int lsnCommitCheckpointsDelay) {
         return createReader(lsnCommitCheckpointsDelay, false);
     }
 
-    private PostgresSourceReader createReader(
-            final int lsnCommitCheckpointsDelay, boolean skipBackFill) throws Exception {
+    private PostgresSourceReader<SourceRecord> createReader(
+            final int lsnCommitCheckpointsDelay, boolean skipBackFill) {
         final PostgresOffsetFactory offsetFactory = new PostgresOffsetFactory();
         final PostgresSourceConfigFactory configFactory = new PostgresSourceConfigFactory();
         configFactory.hostname(customDatabase.getHost());
@@ -218,7 +220,7 @@ public class PostgresSourceReaderTest extends PostgresTestBase {
         configFactory.skipSnapshotBackfill(skipBackFill);
         configFactory.decodingPluginName("pgoutput");
         MockPostgresDialect dialect = new MockPostgresDialect(configFactory.create(0));
-        final PostgresSourceBuilder.PostgresIncrementalSource<?> source =
+        final PostgresSourceBuilder.PostgresIncrementalSource<SourceRecord> source =
                 new PostgresSourceBuilder.PostgresIncrementalSource<>(
                         configFactory, new ForwardDeserializeSchema(), offsetFactory, dialect);
         return source.createReader(new TestingReaderContext());
@@ -271,7 +273,7 @@ public class PostgresSourceReaderTest extends PostgresTestBase {
         private static final long serialVersionUID = 1L;
 
         @Override
-        public void deserialize(SourceRecord record, Collector<SourceRecord> out) throws Exception {
+        public void deserialize(SourceRecord record, Collector<SourceRecord> out) {
             out.collect(record);
         }
 

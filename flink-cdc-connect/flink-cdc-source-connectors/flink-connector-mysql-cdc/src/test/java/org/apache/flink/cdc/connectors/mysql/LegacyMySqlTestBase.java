@@ -38,14 +38,13 @@ public abstract class LegacyMySqlTestBase extends AbstractTestBase {
     private static final Logger LOG = LoggerFactory.getLogger(LegacyMySqlTestBase.class);
 
     protected static final MySqlContainer MYSQL_CONTAINER =
-            (MySqlContainer)
-                    new MySqlContainer()
-                            .withConfigurationOverride("docker/server/my.cnf")
-                            .withSetupSQL("docker/setup.sql")
-                            .withDatabaseName("flink-test")
-                            .withUsername("flinkuser")
-                            .withPassword("flinkpw")
-                            .withLogConsumer(new Slf4jLogConsumer(LOG));
+            new MySqlContainer()
+                    .withConfigurationOverride("docker/server/my.cnf")
+                    .withSetupSQL("docker/setup.sql")
+                    .withDatabaseName("flink-test")
+                    .withUsername("flinkuser")
+                    .withPassword("flinkpw")
+                    .withLogConsumer(new Slf4jLogConsumer(LOG));
 
     @BeforeAll
     static void startContainers() {

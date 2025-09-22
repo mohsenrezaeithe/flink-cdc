@@ -18,14 +18,15 @@
 package org.apache.flink.cdc.connectors.mysql;
 
 import org.apache.flink.api.java.tuple.Tuple2;
-import org.apache.flink.cdc.connectors.mysql.MySqlTestUtils.TestingListState;
 import org.apache.flink.cdc.connectors.mysql.table.StartupOptions;
 import org.apache.flink.cdc.connectors.mysql.testutils.MySqlContainer;
 import org.apache.flink.cdc.connectors.mysql.testutils.UniqueDatabase;
+import org.apache.flink.cdc.connectors.utils.AssertUtils;
 import org.apache.flink.cdc.connectors.utils.TestSourceContext;
 import org.apache.flink.cdc.debezium.DebeziumSourceFunction;
 import org.apache.flink.cdc.debezium.history.FlinkJsonTableChangeSerializer;
 import org.apache.flink.cdc.debezium.internal.Handover;
+import org.apache.flink.cdc.debezium.utils.DatabaseHistoryUtil;
 import org.apache.flink.core.testutils.CheckedThread;
 import org.apache.flink.runtime.state.StateSnapshotContextSynchronousImpl;
 import org.apache.flink.util.FlinkRuntimeException;
@@ -61,15 +62,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
-import static org.apache.flink.cdc.connectors.mysql.MySqlTestUtils.basicSourceBuilder;
-import static org.apache.flink.cdc.connectors.mysql.MySqlTestUtils.drain;
-import static org.apache.flink.cdc.connectors.mysql.MySqlTestUtils.setupSource;
-import static org.apache.flink.cdc.connectors.utils.AssertUtils.assertDelete;
-import static org.apache.flink.cdc.connectors.utils.AssertUtils.assertInsert;
-import static org.apache.flink.cdc.connectors.utils.AssertUtils.assertRead;
-import static org.apache.flink.cdc.connectors.utils.AssertUtils.assertUpdate;
-import static org.apache.flink.cdc.debezium.utils.DatabaseHistoryUtil.removeHistory;
-
 /**
  * Tests for the legacy {@link MySqlSource} which also heavily tests {@link DebeziumSourceFunction}.
  */
@@ -95,7 +87,7 @@ public class LegacyMySqlSourceTest extends LegacyMySqlTestBase {
                 createMySqlBinlogSource(useLegacyImplementation);
         TestSourceContext<SourceRecord> sourceContext = new TestSourceContext<>();
 
-        setupSource(source);
+        MySqlTestUtils.setupSource(source);
         // start the source
         final CheckedThread runThread =
                 new CheckedThread() {
@@ -108,25 +100,25 @@ public class LegacyMySqlSourceTest extends LegacyMySqlTestBase {
                 Statement statement = connection.createStatement()) {
             runThread.start();
 
-            List<SourceRecord> records = drain(sourceContext, 9);
+            List<SourceRecord> records = MySqlTestUtils.drain(sourceContext, 9);
             Assertions.assertThat(records).hasSize(9);
             for (int i = 0; i < records.size(); i++) {
                 if (useLegacyImplementation) {
-                    assertInsert(records.get(i), "id", 101 + i);
+                    AssertUtils.assertInsert(records.get(i), "id", 101 + i);
                 } else {
-                    assertRead(records.get(i), "id", 101 + i);
+                    AssertUtils.assertRead(records.get(i), "id", 101 + i);
                 }
             }
 
             statement.execute(
                     "INSERT INTO products VALUES (default,'robot','Toy robot',1.304)"); // 110
-            records = drain(sourceContext, 1);
-            assertInsert(records.get(0), "id", 110);
+            records = MySqlTestUtils.drain(sourceContext, 1);
+            AssertUtils.assertInsert(records.get(0), "id", 110);
 
             statement.execute(
                     "INSERT INTO products VALUES (1001,'roy','old robot',1234.56)"); // 1001
-            records = drain(sourceContext, 1);
-            assertInsert(records.get(0), "id", 1001);
+            records = MySqlTestUtils.drain(sourceContext, 1);
+            AssertUtils.assertInsert(records.get(0), "id", 1001);
 
             // ---------------------------------------------------------------------------------------------------------------
             // Changing the primary key of a row should result in 2 events: INSERT, DELETE
@@ -134,16 +126,16 @@ public class LegacyMySqlSourceTest extends LegacyMySqlTestBase {
             // ---------------------------------------------------------------------------------------------------------------
             statement.execute(
                     "UPDATE products SET id=2001, description='really old robot' WHERE id=1001");
-            records = drain(sourceContext, 2);
-            assertDelete(records.get(0), "id", 1001);
-            assertInsert(records.get(1), "id", 2001);
+            records = MySqlTestUtils.drain(sourceContext, 2);
+            AssertUtils.assertDelete(records.get(0), "id", 1001);
+            AssertUtils.assertInsert(records.get(1), "id", 2001);
 
             // ---------------------------------------------------------------------------------------------------------------
             // Simple UPDATE (with no schema changes)
             // ---------------------------------------------------------------------------------------------------------------
             statement.execute("UPDATE products SET weight=1345.67 WHERE id=2001");
-            records = drain(sourceContext, 1);
-            assertUpdate(records.get(0), "id", 2001);
+            records = MySqlTestUtils.drain(sourceContext, 1);
+            AssertUtils.assertUpdate(records.get(0), "id", 2001);
 
             // ---------------------------------------------------------------------------------------------------------------
             // Change our schema with a fully-qualified name; we should still see this event
@@ -155,8 +147,8 @@ public class LegacyMySqlSourceTest extends LegacyMySqlTestBase {
                             "ALTER TABLE %s.products ADD COLUMN volume FLOAT, ADD COLUMN alias VARCHAR(30) NULL AFTER description",
                             database.getDatabaseName()));
             statement.execute("UPDATE products SET volume=13.5 WHERE id=2001");
-            records = drain(sourceContext, 1);
-            assertUpdate(records.get(0), "id", 2001);
+            records = MySqlTestUtils.drain(sourceContext, 1);
+            AssertUtils.assertUpdate(records.get(0), "id", 2001);
         } finally {
             // cleanup
             source.close();
@@ -167,8 +159,14 @@ public class LegacyMySqlSourceTest extends LegacyMySqlTestBase {
     @ParameterizedTest(name = "useLegacyImplementation: {0}")
     @ValueSource(booleans = {true, false})
     void testCheckpointAndRestore(boolean useLegacyImplementation) throws Exception {
-        final TestingListState<byte[]> offsetState = new TestingListState<>();
-        final TestingListState<String> historyState = new TestingListState<>();
+        final MySqlTestUtils.TestingListState<byte[]> offsetState =
+                new MySqlTestUtils.TestingListState<>();
+        final MySqlTestUtils.TestingListState<String> historyState =
+                new MySqlTestUtils.TestingListState<>();
+        final MySqlTestUtils.TestingListStateV2<byte[]> offsetStateV2 =
+                new MySqlTestUtils.TestingListStateV2<>();
+        final MySqlTestUtils.TestingListStateV2<String> historyStateV2 =
+                new MySqlTestUtils.TestingListStateV2<>();
         int prevPos = 0;
         {
             // ---------------------------------------------------------------------------
@@ -180,7 +178,16 @@ public class LegacyMySqlSourceTest extends LegacyMySqlTestBase {
             final BlockingSourceContext<SourceRecord> sourceContext =
                     new BlockingSourceContext<>(8);
             // setup source with empty state
-            setupSource(source, false, offsetState, historyState, true, 0, 1);
+            MySqlTestUtils.setupSource(
+                    source,
+                    false,
+                    offsetState,
+                    historyState,
+                    offsetStateV2,
+                    historyStateV2,
+                    true,
+                    0,
+                    1);
             final CheckedThread runThread =
                     new CheckedThread() {
                         @Override
@@ -192,7 +199,7 @@ public class LegacyMySqlSourceTest extends LegacyMySqlTestBase {
                 runThread.start();
 
                 // wait until consumer is started
-                int received = drain(sourceContext, 2).size();
+                int received = MySqlTestUtils.drain(sourceContext, 2).size();
                 Assertions.assertThat(received).isEqualTo(2);
 
                 // we can't perform checkpoint during DB snapshot
@@ -204,7 +211,7 @@ public class LegacyMySqlSourceTest extends LegacyMySqlTestBase {
                 // unblock the source context to continue the processing
                 sourceContext.blocker.release();
                 // wait until the source finishes the database snapshot
-                List<SourceRecord> records = drain(sourceContext, 9 - received);
+                List<SourceRecord> records = MySqlTestUtils.drain(sourceContext, 9 - received);
                 Assertions.assertThat(records.size() + received).isEqualTo(9);
 
                 // state is still empty
@@ -246,7 +253,16 @@ public class LegacyMySqlSourceTest extends LegacyMySqlTestBase {
             final DebeziumSourceFunction<SourceRecord> source2 =
                     createMySqlBinlogSource(useLegacyImplementation);
             final TestSourceContext<SourceRecord> sourceContext2 = new TestSourceContext<>();
-            setupSource(source2, true, offsetState, historyState, true, 0, 1);
+            MySqlTestUtils.setupSource(
+                    source2,
+                    true,
+                    offsetState,
+                    historyState,
+                    offsetStateV2,
+                    historyStateV2,
+                    true,
+                    0,
+                    1);
             final CheckedThread runThread2 =
                     new CheckedThread() {
                         @Override
@@ -265,9 +281,9 @@ public class LegacyMySqlSourceTest extends LegacyMySqlTestBase {
 
                 statement.execute(
                         "INSERT INTO products VALUES (default,'robot','Toy robot',1.304)"); // 110
-                List<SourceRecord> records = drain(sourceContext2, 1);
+                List<SourceRecord> records = MySqlTestUtils.drain(sourceContext2, 1);
                 Assertions.assertThat(records).hasSize(1);
-                assertInsert(records.get(0), "id", 110);
+                AssertUtils.assertInsert(records.get(0), "id", 110);
 
                 // ---------------------------------------------------------------------------
                 // Step-4: trigger checkpoint-2 during DML operations
@@ -313,7 +329,16 @@ public class LegacyMySqlSourceTest extends LegacyMySqlTestBase {
             final DebeziumSourceFunction<SourceRecord> source3 =
                     createMySqlBinlogSource(useLegacyImplementation);
             final TestSourceContext<SourceRecord> sourceContext3 = new TestSourceContext<>();
-            setupSource(source3, true, offsetState, historyState, true, 0, 1);
+            MySqlTestUtils.setupSource(
+                    source3,
+                    true,
+                    offsetState,
+                    historyState,
+                    offsetStateV2,
+                    historyStateV2,
+                    true,
+                    0,
+                    1);
 
             // restart the source
             final CheckedThread runThread3 =
@@ -328,9 +353,9 @@ public class LegacyMySqlSourceTest extends LegacyMySqlTestBase {
                 runThread3.start();
 
                 // consume the unconsumed binlog
-                List<SourceRecord> records = drain(sourceContext3, 2);
-                assertInsert(records.get(0), "id", 1001);
-                assertUpdate(records.get(1), "id", 1001);
+                List<SourceRecord> records = MySqlTestUtils.drain(sourceContext3, 2);
+                AssertUtils.assertInsert(records.get(0), "id", 1001);
+                AssertUtils.assertUpdate(records.get(1), "id", 1001);
 
                 // make sure there is no more events
                 Assertions.assertThat(
@@ -342,8 +367,8 @@ public class LegacyMySqlSourceTest extends LegacyMySqlTestBase {
                         Statement statement = connection.createStatement()) {
                     statement.execute("DELETE FROM products WHERE id=1001");
                 }
-                records = drain(sourceContext3, 1);
-                assertDelete(records.get(0), "id", 1001);
+                records = MySqlTestUtils.drain(sourceContext3, 1);
+                AssertUtils.assertDelete(records.get(0), "id", 1001);
 
                 // ---------------------------------------------------------------------------
                 // Step-6: trigger checkpoint-2 to make sure we can continue to to further
@@ -382,7 +407,16 @@ public class LegacyMySqlSourceTest extends LegacyMySqlTestBase {
             final DebeziumSourceFunction<SourceRecord> source4 =
                     createMySqlBinlogSource(useLegacyImplementation);
             final TestSourceContext<SourceRecord> sourceContext4 = new TestSourceContext<>();
-            setupSource(source4, true, offsetState, historyState, true, 0, 1);
+            MySqlTestUtils.setupSource(
+                    source4,
+                    true,
+                    offsetState,
+                    historyState,
+                    offsetStateV2,
+                    historyStateV2,
+                    true,
+                    0,
+                    1);
 
             // restart the source
             final CheckedThread runThread4 =
@@ -438,7 +472,16 @@ public class LegacyMySqlSourceTest extends LegacyMySqlTestBase {
             final DebeziumSourceFunction<SourceRecord> source5 =
                     createMySqlBinlogSource(useLegacyImplementation);
             final TestSourceContext<SourceRecord> sourceContext5 = new TestSourceContext<>();
-            setupSource(source5, true, offsetState, historyState, true, 0, 1);
+            MySqlTestUtils.setupSource(
+                    source5,
+                    true,
+                    offsetState,
+                    historyState,
+                    offsetStateV2,
+                    historyStateV2,
+                    true,
+                    0,
+                    1);
 
             // restart the source
             final CheckedThread runThread5 =
@@ -459,8 +502,8 @@ public class LegacyMySqlSourceTest extends LegacyMySqlTestBase {
                             "INSERT INTO products(id, description, weight) VALUES (default, 'Go go go', 111.1)");
                     statement.execute(
                             "ALTER TABLE products ADD comment_col VARCHAR(100) DEFAULT 'cdc'");
-                    List<SourceRecord> records = drain(sourceContext5, 1);
-                    assertInsert(records.get(0), "id", 1002);
+                    List<SourceRecord> records = MySqlTestUtils.drain(sourceContext5, 1);
+                    AssertUtils.assertInsert(records.get(0), "id", 1002);
                 }
 
                 // ---------------------------------------------------------------------------
@@ -499,7 +542,16 @@ public class LegacyMySqlSourceTest extends LegacyMySqlTestBase {
             final DebeziumSourceFunction<SourceRecord> source6 =
                     createMySqlBinlogSource(useLegacyImplementation);
             final TestSourceContext<SourceRecord> sourceContext6 = new TestSourceContext<>();
-            setupSource(source6, true, offsetState, historyState, true, 0, 1);
+            MySqlTestUtils.setupSource(
+                    source6,
+                    true,
+                    offsetState,
+                    historyState,
+                    offsetStateV2,
+                    historyStateV2,
+                    true,
+                    0,
+                    1);
 
             // restart the source
             final CheckedThread runThread6 =
@@ -516,8 +568,8 @@ public class LegacyMySqlSourceTest extends LegacyMySqlTestBase {
 
                     statement.execute(
                             "INSERT INTO products(id, description, weight) VALUES (default, 'Run!', 22.2)");
-                    List<SourceRecord> records = drain(sourceContext6, 1);
-                    assertInsert(records.get(0), "id", 1003);
+                    List<SourceRecord> records = MySqlTestUtils.drain(sourceContext6, 1);
+                    AssertUtils.assertInsert(records.get(0), "id", 1003);
                 }
             } finally {
                 source6.close();
@@ -529,8 +581,14 @@ public class LegacyMySqlSourceTest extends LegacyMySqlTestBase {
     @ParameterizedTest(name = "useLegacyImplementation: {0}")
     @ValueSource(booleans = {true, false})
     void testRecoverFromRenameOperation(boolean useLegacyImplementation) throws Exception {
-        final TestingListState<byte[]> offsetState = new TestingListState<>();
-        final TestingListState<String> historyState = new TestingListState<>();
+        final MySqlTestUtils.TestingListState<byte[]> offsetState =
+                new MySqlTestUtils.TestingListState<>();
+        final MySqlTestUtils.TestingListState<String> historyState =
+                new MySqlTestUtils.TestingListState<>();
+        final MySqlTestUtils.TestingListStateV2<byte[]> offsetStateV2 =
+                new MySqlTestUtils.TestingListStateV2<>();
+        final MySqlTestUtils.TestingListStateV2<String> historyStateV2 =
+                new MySqlTestUtils.TestingListStateV2<>();
 
         {
             try (Connection connection = database.getJdbcConnection();
@@ -540,7 +598,16 @@ public class LegacyMySqlSourceTest extends LegacyMySqlTestBase {
                         createMySqlBinlogSource(useLegacyImplementation);
                 final TestSourceContext<SourceRecord> sourceContext = new TestSourceContext<>();
                 // setup source with empty state
-                setupSource(source, false, offsetState, historyState, true, 0, 1);
+                MySqlTestUtils.setupSource(
+                        source,
+                        false,
+                        offsetState,
+                        historyState,
+                        offsetStateV2,
+                        historyStateV2,
+                        true,
+                        0,
+                        1);
 
                 final CheckedThread runThread =
                         new CheckedThread() {
@@ -553,7 +620,7 @@ public class LegacyMySqlSourceTest extends LegacyMySqlTestBase {
                     runThread.start();
 
                     // wait until the source finishes the database snapshot
-                    List<SourceRecord> records = drain(sourceContext, 9);
+                    List<SourceRecord> records = MySqlTestUtils.drain(sourceContext, 9);
                     Assertions.assertThat(records).hasSize(9);
 
                     // state is still empty
@@ -573,7 +640,7 @@ public class LegacyMySqlSourceTest extends LegacyMySqlTestBase {
                     statement.execute(
                             "INSERT INTO `products` VALUES (112,'cargo train','City cargo train',1.304)"); // 112
 
-                    int received = drain(sourceContext, 3).size();
+                    int received = MySqlTestUtils.drain(sourceContext, 3).size();
                     Assertions.assertThat(received).isEqualTo(3);
 
                     // Step-2: trigger a checkpoint
@@ -596,7 +663,16 @@ public class LegacyMySqlSourceTest extends LegacyMySqlTestBase {
             final DebeziumSourceFunction<SourceRecord> source2 =
                     createMySqlBinlogSource(useLegacyImplementation);
             final TestSourceContext<SourceRecord> sourceContext2 = new TestSourceContext<>();
-            setupSource(source2, true, offsetState, historyState, true, 0, 1);
+            MySqlTestUtils.setupSource(
+                    source2,
+                    true,
+                    offsetState,
+                    historyState,
+                    offsetStateV2,
+                    historyStateV2,
+                    true,
+                    0,
+                    1);
             final CheckedThread runThread2 =
                     new CheckedThread() {
                         @Override
@@ -615,9 +691,9 @@ public class LegacyMySqlSourceTest extends LegacyMySqlTestBase {
                     Statement statement = connection.createStatement()) {
                 statement.execute(
                         "INSERT INTO `products` VALUES (113,'Airplane','Toy airplane',1.304)"); // 113
-                List<SourceRecord> records = drain(sourceContext2, 1);
+                List<SourceRecord> records = MySqlTestUtils.drain(sourceContext2, 1);
                 Assertions.assertThat(records).hasSize(1);
-                assertInsert(records.get(0), "id", 113);
+                AssertUtils.assertInsert(records.get(0), "id", 113);
             } finally {
                 source2.close();
                 runThread2.sync();
@@ -639,8 +715,14 @@ public class LegacyMySqlSourceTest extends LegacyMySqlTestBase {
                         MYSQL_CONTAINER, database, "products", 10, useLegacyImplementation);
         final String offsetFile = offset.f0;
         final int offsetPos = offset.f1;
-        final TestingListState<byte[]> offsetState = new TestingListState<>();
-        final TestingListState<String> historyState = new TestingListState<>();
+        final MySqlTestUtils.TestingListState<byte[]> offsetState =
+                new MySqlTestUtils.TestingListState<>();
+        final MySqlTestUtils.TestingListState<String> historyState =
+                new MySqlTestUtils.TestingListState<>();
+        final MySqlTestUtils.TestingListStateV2<byte[]> offsetStateV2 =
+                new MySqlTestUtils.TestingListStateV2<>();
+        final MySqlTestUtils.TestingListStateV2<String> historyStateV2 =
+                new MySqlTestUtils.TestingListStateV2<>();
         // ---------------------------------------------------------------------------
         // Step-3: start source from the specific offset
         // ---------------------------------------------------------------------------
@@ -655,7 +737,16 @@ public class LegacyMySqlSourceTest extends LegacyMySqlTestBase {
             final DebeziumSourceFunction<SourceRecord> source2 =
                     createMySqlBinlogSource(offsetFile, offsetPos, useLegacyImplementation);
             final TestSourceContext<SourceRecord> sourceContext2 = new TestSourceContext<>();
-            setupSource(source2, false, offsetState, historyState, true, 0, 1);
+            MySqlTestUtils.setupSource(
+                    source2,
+                    false,
+                    offsetState,
+                    historyState,
+                    offsetStateV2,
+                    historyStateV2,
+                    true,
+                    0,
+                    1);
             final CheckedThread runThread2 =
                     new CheckedThread() {
                         @Override
@@ -667,12 +758,12 @@ public class LegacyMySqlSourceTest extends LegacyMySqlTestBase {
                 runThread2.start();
 
                 // we can continue to read binlog from specific offset
-                List<SourceRecord> records = drain(sourceContext2, 4);
+                List<SourceRecord> records = MySqlTestUtils.drain(sourceContext2, 4);
                 Assertions.assertThat(records).hasSize(4);
-                assertInsert(records.get(0), "id", 1001);
-                assertDelete(records.get(1), "id", 1001);
-                assertInsert(records.get(2), "id", 2001);
-                assertUpdate(records.get(3), "id", 2001);
+                AssertUtils.assertInsert(records.get(0), "id", 1001);
+                AssertUtils.assertDelete(records.get(1), "id", 1001);
+                AssertUtils.assertInsert(records.get(2), "id", 2001);
+                AssertUtils.assertUpdate(records.get(3), "id", 2001);
 
                 // ---------------------------------------------------------------------------
                 // Step-4: trigger checkpoint-2
@@ -696,7 +787,16 @@ public class LegacyMySqlSourceTest extends LegacyMySqlTestBase {
             final DebeziumSourceFunction<SourceRecord> source3 =
                     createMySqlBinlogSource(offsetFile, offsetPos, useLegacyImplementation);
             final TestSourceContext<SourceRecord> sourceContext3 = new TestSourceContext<>();
-            setupSource(source3, true, offsetState, historyState, true, 0, 1);
+            MySqlTestUtils.setupSource(
+                    source3,
+                    true,
+                    offsetState,
+                    historyState,
+                    offsetStateV2,
+                    historyStateV2,
+                    true,
+                    0,
+                    1);
             final CheckedThread runThread3 =
                     new CheckedThread() {
                         @Override
@@ -708,9 +808,9 @@ public class LegacyMySqlSourceTest extends LegacyMySqlTestBase {
                 runThread3.start();
 
                 statement.execute("DELETE FROM products WHERE id=2001");
-                List<SourceRecord> records = drain(sourceContext3, 1);
+                List<SourceRecord> records = MySqlTestUtils.drain(sourceContext3, 1);
                 Assertions.assertThat(records).hasSize(1);
-                assertDelete(records.get(0), "id", 2001);
+                AssertUtils.assertDelete(records.get(0), "id", 2001);
             } finally {
                 source3.close();
                 runThread3.sync();
@@ -721,22 +821,37 @@ public class LegacyMySqlSourceTest extends LegacyMySqlTestBase {
     @ParameterizedTest(name = "useLegacyImplementation: {0}")
     @ValueSource(booleans = {true, false})
     void testConsumingEmptyTable(boolean useLegacyImplementation) throws Exception {
-        final TestingListState<byte[]> offsetState = new TestingListState<>();
-        final TestingListState<String> historyState = new TestingListState<>();
+        final MySqlTestUtils.TestingListState<byte[]> offsetState =
+                new MySqlTestUtils.TestingListState<>();
+        final MySqlTestUtils.TestingListState<String> historyState =
+                new MySqlTestUtils.TestingListState<>();
+        final MySqlTestUtils.TestingListStateV2<byte[]> offsetStateV2 =
+                new MySqlTestUtils.TestingListStateV2<>();
+        final MySqlTestUtils.TestingListStateV2<String> historyStateV2 =
+                new MySqlTestUtils.TestingListStateV2<>();
         int prevPos = 0;
         {
             // ---------------------------------------------------------------------------
             // Step-1: start the source from empty state
             // ---------------------------------------------------------------------------
             DebeziumSourceFunction<SourceRecord> source =
-                    basicSourceBuilder(database, "UTC", useLegacyImplementation)
+                    MySqlTestUtils.basicSourceBuilder(database, "UTC", useLegacyImplementation)
                             .tableList(database.getDatabaseName() + "." + "category")
                             .build();
             // we use blocking context to block the source to emit before last snapshot record
             final BlockingSourceContext<SourceRecord> sourceContext =
                     new BlockingSourceContext<>(8);
             // setup source with empty state
-            setupSource(source, false, offsetState, historyState, true, 0, 1);
+            MySqlTestUtils.setupSource(
+                    source,
+                    false,
+                    offsetState,
+                    historyState,
+                    offsetStateV2,
+                    historyStateV2,
+                    true,
+                    0,
+                    1);
 
             final CheckedThread runThread =
                     new CheckedThread() {
@@ -772,11 +887,11 @@ public class LegacyMySqlSourceTest extends LegacyMySqlTestBase {
                     statement.execute("INSERT INTO category VALUES (1, 'book')");
                     statement.execute("INSERT INTO category VALUES (2, 'shoes')");
                     statement.execute("UPDATE category SET category_name='books' WHERE id=1");
-                    List<SourceRecord> records = drain(sourceContext, 3);
+                    List<SourceRecord> records = MySqlTestUtils.drain(sourceContext, 3);
                     Assertions.assertThat(records).hasSize(3);
-                    assertInsert(records.get(0), "id", 1);
-                    assertInsert(records.get(1), "id", 2);
-                    assertUpdate(records.get(2), "id", 1);
+                    AssertUtils.assertInsert(records.get(0), "id", 1);
+                    AssertUtils.assertInsert(records.get(1), "id", 2);
+                    AssertUtils.assertUpdate(records.get(2), "id", 1);
 
                     // ---------------------------------------------------------------------------
                     // Step-4: trigger checkpoint-2 during DML operations
@@ -815,8 +930,14 @@ public class LegacyMySqlSourceTest extends LegacyMySqlTestBase {
     @ParameterizedTest(name = "useLegacyImplementation: {0}")
     @ValueSource(booleans = {true, false})
     void testChooseDatabase(boolean useLegacyImplementation) throws Exception {
-        final TestingListState<byte[]> offsetState = new TestingListState<>();
-        final TestingListState<String> historyState = new TestingListState<>();
+        final MySqlTestUtils.TestingListState<byte[]> offsetState =
+                new MySqlTestUtils.TestingListState<>();
+        final MySqlTestUtils.TestingListState<String> historyState =
+                new MySqlTestUtils.TestingListState<>();
+        final MySqlTestUtils.TestingListStateV2<byte[]> offsetStateV2 =
+                new MySqlTestUtils.TestingListStateV2<>();
+        final MySqlTestUtils.TestingListStateV2<String> historyStateV2 =
+                new MySqlTestUtils.TestingListStateV2<>();
 
         historyState.add("engine-name");
         DocumentWriter writer = DocumentWriter.defaultWriter();
@@ -846,7 +967,8 @@ public class LegacyMySqlSourceTest extends LegacyMySqlTestBase {
 
         final DebeziumSourceFunction<SourceRecord> source =
                 createMySqlBinlogSource(useLegacyImplementation);
-        setupSource(source, true, offsetState, historyState, true, 0, 1);
+        MySqlTestUtils.setupSource(
+                source, true, offsetState, historyState, offsetStateV2, historyStateV2, true, 0, 1);
 
         TestSourceContext<SourceRecord> sourceContext = new TestSourceContext<>();
 
@@ -880,8 +1002,14 @@ public class LegacyMySqlSourceTest extends LegacyMySqlTestBase {
     @ParameterizedTest(name = "useLegacyImplementation: {0}")
     @ValueSource(booleans = {true, false})
     void testLoadIllegalState(boolean useLegacyImplementation) {
-        final TestingListState<byte[]> offsetState = new TestingListState<>();
-        final TestingListState<String> historyState = new TestingListState<>();
+        final MySqlTestUtils.TestingListState<byte[]> offsetState =
+                new MySqlTestUtils.TestingListState<>();
+        final MySqlTestUtils.TestingListState<String> historyState =
+                new MySqlTestUtils.TestingListState<>();
+        final MySqlTestUtils.TestingListStateV2<byte[]> offsetStateV2 =
+                new MySqlTestUtils.TestingListStateV2<>();
+        final MySqlTestUtils.TestingListStateV2<String> historyStateV2 =
+                new MySqlTestUtils.TestingListStateV2<>();
 
         historyState.add("engine-name");
         historyState.add("IllegalState");
@@ -889,7 +1017,17 @@ public class LegacyMySqlSourceTest extends LegacyMySqlTestBase {
         final DebeziumSourceFunction<SourceRecord> source =
                 createMySqlBinlogSource(useLegacyImplementation);
         Assertions.assertThatThrownBy(
-                        () -> setupSource(source, true, offsetState, historyState, true, 0, 1))
+                        () ->
+                                MySqlTestUtils.setupSource(
+                                        source,
+                                        true,
+                                        offsetState,
+                                        historyState,
+                                        offsetStateV2,
+                                        historyStateV2,
+                                        true,
+                                        0,
+                                        1))
                 .isExactlyInstanceOf(JsonParseException.class)
                 .hasMessageContaining("Unrecognized token 'IllegalState'");
     }
@@ -897,8 +1035,14 @@ public class LegacyMySqlSourceTest extends LegacyMySqlTestBase {
     @ParameterizedTest(name = "useLegacyImplementation: {0}")
     @ValueSource(booleans = {true, false})
     void testSchemaRemovedBeforeCheckpoint(boolean useLegacyImplementation) throws Exception {
-        final TestingListState<byte[]> offsetState = new TestingListState<>();
-        final TestingListState<String> historyState = new TestingListState<>();
+        final MySqlTestUtils.TestingListState<byte[]> offsetState =
+                new MySqlTestUtils.TestingListState<>();
+        final MySqlTestUtils.TestingListState<String> historyState =
+                new MySqlTestUtils.TestingListState<>();
+        final MySqlTestUtils.TestingListStateV2<byte[]> offsetStateV2 =
+                new MySqlTestUtils.TestingListStateV2<>();
+        final MySqlTestUtils.TestingListStateV2<String> historyStateV2 =
+                new MySqlTestUtils.TestingListStateV2<>();
 
         {
             try (Connection connection = database.getJdbcConnection();
@@ -908,7 +1052,16 @@ public class LegacyMySqlSourceTest extends LegacyMySqlTestBase {
                         createMySqlBinlogSource(useLegacyImplementation);
                 final TestSourceContext<SourceRecord> sourceContext = new TestSourceContext<>();
                 // setup source with empty state
-                setupSource(source, false, offsetState, historyState, true, 0, 1);
+                MySqlTestUtils.setupSource(
+                        source,
+                        false,
+                        offsetState,
+                        historyState,
+                        offsetStateV2,
+                        historyStateV2,
+                        true,
+                        0,
+                        1);
 
                 final CheckedThread runThread =
                         new CheckedThread() {
@@ -921,7 +1074,7 @@ public class LegacyMySqlSourceTest extends LegacyMySqlTestBase {
                     runThread.start();
 
                     // wait until the source finishes the database snapshot
-                    List<SourceRecord> records = drain(sourceContext, 9);
+                    List<SourceRecord> records = MySqlTestUtils.drain(sourceContext, 9);
                     Assertions.assertThat(records).hasSize(9);
 
                     // state is still empty
@@ -931,7 +1084,7 @@ public class LegacyMySqlSourceTest extends LegacyMySqlTestBase {
                     statement.execute(
                             "INSERT INTO `products` VALUES (110,'robot','Toy robot',1.304)"); // 110
 
-                    int received = drain(sourceContext, 1).size();
+                    int received = MySqlTestUtils.drain(sourceContext, 1).size();
                     Assertions.assertThat(received).isOne();
 
                     // Step-2: trigger a checkpoint
@@ -945,7 +1098,7 @@ public class LegacyMySqlSourceTest extends LegacyMySqlTestBase {
 
                     // Step-3: mock the engine stop, remove the schema history before checkpoint
                     final String engineInstanceName = source.getEngineInstanceName();
-                    removeHistory(engineInstanceName);
+                    DatabaseHistoryUtil.removeHistory(engineInstanceName);
 
                     try {
                         synchronized (sourceContext.getCheckpointLock()) {
@@ -973,8 +1126,14 @@ public class LegacyMySqlSourceTest extends LegacyMySqlTestBase {
     @ParameterizedTest(name = "useLegacyImplementation: {0}")
     @ValueSource(booleans = {true, false})
     void testSnapshotOnClosedSource(boolean useLegacyImplementation) throws Exception {
-        final TestingListState<byte[]> offsetState = new TestingListState<>();
-        final TestingListState<String> historyState = new TestingListState<>();
+        final MySqlTestUtils.TestingListState<byte[]> offsetState =
+                new MySqlTestUtils.TestingListState<>();
+        final MySqlTestUtils.TestingListState<String> historyState =
+                new MySqlTestUtils.TestingListState<>();
+        final MySqlTestUtils.TestingListStateV2<byte[]> offsetStateV2 =
+                new MySqlTestUtils.TestingListStateV2<>();
+        final MySqlTestUtils.TestingListStateV2<String> historyStateV2 =
+                new MySqlTestUtils.TestingListStateV2<>();
 
         {
             try (Connection connection = database.getJdbcConnection();
@@ -984,7 +1143,16 @@ public class LegacyMySqlSourceTest extends LegacyMySqlTestBase {
                         createMySqlBinlogSource(useLegacyImplementation);
                 final TestSourceContext<SourceRecord> sourceContext = new TestSourceContext<>();
                 // setup source with empty state
-                setupSource(source, false, offsetState, historyState, true, 0, 1);
+                MySqlTestUtils.setupSource(
+                        source,
+                        false,
+                        offsetState,
+                        historyState,
+                        offsetStateV2,
+                        historyStateV2,
+                        true,
+                        0,
+                        1);
 
                 final CheckedThread runThread =
                         new CheckedThread() {
@@ -997,7 +1165,7 @@ public class LegacyMySqlSourceTest extends LegacyMySqlTestBase {
                     runThread.start();
 
                     // wait until the source finishes the database snapshot
-                    List<SourceRecord> records = drain(sourceContext, 9);
+                    List<SourceRecord> records = MySqlTestUtils.drain(sourceContext, 9);
                     Assertions.assertThat(records).hasSize(9);
 
                     // state is still empty
@@ -1007,7 +1175,7 @@ public class LegacyMySqlSourceTest extends LegacyMySqlTestBase {
                     statement.execute(
                             "INSERT INTO `products` VALUES (110,'robot','Toy robot',1.304)"); // 110
 
-                    int received = drain(sourceContext, 1).size();
+                    int received = MySqlTestUtils.drain(sourceContext, 1).size();
                     Assertions.assertThat(received).isOne();
 
                     // Step-2: trigger a checkpoint
@@ -1041,8 +1209,14 @@ public class LegacyMySqlSourceTest extends LegacyMySqlTestBase {
     @ParameterizedTest(name = "useLegacyImplementation: {0}")
     @ValueSource(booleans = {true, false})
     void testSnapshotOnFailedSource(boolean useLegacyImplementation) throws Exception {
-        final TestingListState<byte[]> offsetState = new TestingListState<>();
-        final TestingListState<String> historyState = new TestingListState<>();
+        final MySqlTestUtils.TestingListState<byte[]> offsetState =
+                new MySqlTestUtils.TestingListState<>();
+        final MySqlTestUtils.TestingListState<String> historyState =
+                new MySqlTestUtils.TestingListState<>();
+        final MySqlTestUtils.TestingListStateV2<byte[]> offsetStateV2 =
+                new MySqlTestUtils.TestingListStateV2<>();
+        final MySqlTestUtils.TestingListStateV2<String> historyStateV2 =
+                new MySqlTestUtils.TestingListStateV2<>();
 
         {
             try (Connection connection = database.getJdbcConnection();
@@ -1052,7 +1226,16 @@ public class LegacyMySqlSourceTest extends LegacyMySqlTestBase {
                         createMySqlBinlogSource(useLegacyImplementation);
                 final TestSourceContext<SourceRecord> sourceContext = new TestSourceContext<>();
                 // setup source with empty state
-                setupSource(source, false, offsetState, historyState, true, 0, 1);
+                MySqlTestUtils.setupSource(
+                        source,
+                        false,
+                        offsetState,
+                        historyState,
+                        offsetStateV2,
+                        historyStateV2,
+                        true,
+                        0,
+                        1);
 
                 final CheckedThread runThread =
                         new CheckedThread() {
@@ -1065,7 +1248,7 @@ public class LegacyMySqlSourceTest extends LegacyMySqlTestBase {
                     runThread.start();
 
                     // wait until the source finishes the database snapshot
-                    List<SourceRecord> records = drain(sourceContext, 9);
+                    List<SourceRecord> records = MySqlTestUtils.drain(sourceContext, 9);
                     Assertions.assertThat(records).hasSize(9);
 
                     // state is still empty
@@ -1075,7 +1258,7 @@ public class LegacyMySqlSourceTest extends LegacyMySqlTestBase {
                     statement.execute(
                             "INSERT INTO `products` VALUES (110,'robot','Toy robot',1.304)"); // 110
 
-                    int received = drain(sourceContext, 1).size();
+                    int received = MySqlTestUtils.drain(sourceContext, 1).size();
                     Assertions.assertThat(received).isOne();
 
                     // Step-2: trigger a checkpoint
@@ -1148,14 +1331,29 @@ public class LegacyMySqlSourceTest extends LegacyMySqlTestBase {
                         .deserializer(new MySqlTestUtils.ForwardDeserializeSchema())
                         .debeziumProperties(createDebeziumProperties(useLegacyImplementation))
                         .build();
-        final TestingListState<byte[]> offsetState = new TestingListState<>();
-        final TestingListState<String> historyState = new TestingListState<>();
+        final MySqlTestUtils.TestingListState<byte[]> offsetState =
+                new MySqlTestUtils.TestingListState<>();
+        final MySqlTestUtils.TestingListState<String> historyState =
+                new MySqlTestUtils.TestingListState<>();
+        final MySqlTestUtils.TestingListStateV2<byte[]> offsetStateV2 =
+                new MySqlTestUtils.TestingListStateV2<>();
+        final MySqlTestUtils.TestingListStateV2<String> historyStateV2 =
+                new MySqlTestUtils.TestingListStateV2<>();
 
         // ---------------------------------------------------------------------------
         // Step-1: start source
         // ---------------------------------------------------------------------------
         TestSourceContext<SourceRecord> sourceContext = new TestSourceContext<>();
-        setupSource(source, false, offsetState, historyState, true, 0, 1);
+        MySqlTestUtils.setupSource(
+                source,
+                false,
+                offsetState,
+                historyState,
+                offsetStateV2,
+                historyStateV2,
+                true,
+                0,
+                1);
         final CheckedThread runThread =
                 new CheckedThread() {
                     @Override
@@ -1166,7 +1364,7 @@ public class LegacyMySqlSourceTest extends LegacyMySqlTestBase {
         try {
             runThread.start();
 
-            drain(sourceContext, expectedRecordCount);
+            MySqlTestUtils.drain(sourceContext, expectedRecordCount);
 
             // ---------------------------------------------------------------------------
             // Step-2: trigger checkpoint-1 after snapshot finished
@@ -1218,7 +1416,7 @@ public class LegacyMySqlSourceTest extends LegacyMySqlTestBase {
     }
 
     private void assertHistoryState(
-            TestingListState<String> historyState, boolean useLegacyImplementation) {
+            MySqlTestUtils.TestingListState<String> historyState, boolean useLegacyImplementation) {
         Assertions.assertThat(historyState.list).isNotEmpty();
         // assert the DDL is stored in the history state
         if (!useLegacyImplementation) {
@@ -1256,14 +1454,14 @@ public class LegacyMySqlSourceTest extends LegacyMySqlTestBase {
 
     private DebeziumSourceFunction<SourceRecord> createMySqlBinlogSource(
             String offsetFile, int offsetPos, boolean useLegacyImplementation) {
-        return basicSourceBuilder(database, "UTC", useLegacyImplementation)
+        return MySqlTestUtils.basicSourceBuilder(database, "UTC", useLegacyImplementation)
                 .startupOptions(StartupOptions.specificOffset(offsetFile, offsetPos))
                 .build();
     }
 
     private DebeziumSourceFunction<SourceRecord> createMySqlBinlogSource(
             boolean useLegacyImplementation) {
-        return basicSourceBuilder(database, "UTC", useLegacyImplementation).build();
+        return MySqlTestUtils.basicSourceBuilder(database, "UTC", useLegacyImplementation).build();
     }
 
     private boolean waitForCheckpointLock(Object checkpointLock, Duration timeout)

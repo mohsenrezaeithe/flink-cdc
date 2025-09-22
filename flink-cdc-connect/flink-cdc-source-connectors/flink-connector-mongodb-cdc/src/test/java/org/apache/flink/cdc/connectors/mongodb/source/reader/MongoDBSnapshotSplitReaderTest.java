@@ -33,6 +33,7 @@ import org.apache.flink.cdc.connectors.mongodb.source.assigners.splitters.SplitV
 import org.apache.flink.cdc.connectors.mongodb.source.config.MongoDBSourceConfig;
 import org.apache.flink.cdc.connectors.mongodb.source.config.MongoDBSourceConfigFactory;
 import org.apache.flink.cdc.connectors.mongodb.source.dialect.MongoDBDialect;
+import org.apache.flink.cdc.connectors.mongodb.utils.MongoDBContainer;
 import org.apache.flink.connector.base.source.reader.splitreader.SplitsAddition;
 import org.apache.flink.connector.testutils.source.reader.TestingReaderContext;
 
@@ -41,13 +42,18 @@ import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.assertj.core.api.Assertions;
 import org.bson.BsonDocument;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.testcontainers.containers.output.Slf4jLogConsumer;
+import org.testcontainers.lifecycle.Startables;
 
 import java.util.Iterator;
 import java.util.LinkedList;
+import java.util.stream.Stream;
 
 import static java.util.Collections.singletonList;
 import static org.apache.flink.cdc.connectors.base.source.meta.wartermark.WatermarkEvent.isWatermarkEvent;
@@ -60,9 +66,28 @@ class MongoDBSnapshotSplitReaderTest extends MongoDBSourceTestBase {
 
     private static final Logger LOG = LoggerFactory.getLogger(MongoDBSnapshotSplitReaderTest.class);
 
-    private static final int MAX_RETRY_TIMES = 100;
+    private static final MongoDBContainer MONGO_CONTAINER =
+            new MongoDBContainer("mongo:" + getMongoVersion())
+                    .withSharding()
+                    .withLogConsumer(new Slf4jLogConsumer(LOG));
 
-    private String database;
+    @BeforeAll
+    static void startContainers() {
+        LOG.info("Starting containers...");
+        Startables.deepStart(Stream.of(MONGO_CONTAINER)).join();
+        LOG.info("Containers are started.");
+    }
+
+    @AfterAll
+    static void stopContainers() {
+        LOG.info("Stopping containers...");
+        if (MONGO_CONTAINER != null) {
+            MONGO_CONTAINER.stop();
+        }
+        LOG.info("Containers are stopped.");
+    }
+
+    private static final int MAX_RETRY_TIMES = 100;
 
     private MongoDBSourceConfig sourceConfig;
 
@@ -72,7 +97,7 @@ class MongoDBSnapshotSplitReaderTest extends MongoDBSourceTestBase {
 
     @BeforeEach
     public void before() {
-        database = MONGO_CONTAINER.executeCommandFileInSeparateDatabase("chunk_test");
+        String database = MONGO_CONTAINER.executeCommandFileInSeparateDatabase("chunk_test");
 
         MongoDBSourceConfigFactory configFactory =
                 new MongoDBSourceConfigFactory()

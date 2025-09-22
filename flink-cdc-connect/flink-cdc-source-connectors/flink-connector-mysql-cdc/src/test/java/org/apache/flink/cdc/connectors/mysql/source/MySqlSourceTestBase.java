@@ -92,16 +92,15 @@ public abstract class MySqlSourceTestBase extends TestLogger {
     }
 
     protected static MySqlContainer createMySqlContainer(MySqlVersion version, String configPath) {
-        return (MySqlContainer)
-                new MySqlContainer(version)
-                        .withConfigurationOverride(configPath)
-                        .withSetupSQL("docker/setup.sql")
-                        .withDatabaseName("flink-test")
-                        .withUsername("flinkuser")
-                        .withPassword("flinkpw")
-                        .withNetwork(NETWORK)
-                        .withNetworkAliases(INTER_CONTAINER_MYSQL_ALIAS)
-                        .withLogConsumer(new Slf4jLogConsumer(LOG));
+        return new MySqlContainer(version)
+                .withConfigurationOverride(configPath)
+                .withSetupSQL("docker/setup.sql")
+                .withDatabaseName("flink-test")
+                .withUsername("flinkuser")
+                .withPassword("flinkpw")
+                .withNetwork(NETWORK)
+                .withNetworkAliases(INTER_CONTAINER_MYSQL_ALIAS)
+                .withLogConsumer(new Slf4jLogConsumer(LOG));
     }
 
     // ------------------------------------------------------------------------
@@ -161,7 +160,8 @@ public abstract class MySqlSourceTestBase extends TestLogger {
 
     protected static void triggerJobManagerFailover(
             JobID jobId, MiniCluster miniCluster, Runnable afterFailAction) throws Exception {
-        final HaLeadershipControl haLeadershipControl = miniCluster.getHaLeadershipControl().get();
+        final HaLeadershipControl haLeadershipControl =
+                miniCluster.getHaLeadershipControl().orElseThrow();
         ensureJmLeaderServiceExists(haLeadershipControl, jobId);
         haLeadershipControl.revokeJobMasterLeadership(jobId).get();
         afterFailAction.run();

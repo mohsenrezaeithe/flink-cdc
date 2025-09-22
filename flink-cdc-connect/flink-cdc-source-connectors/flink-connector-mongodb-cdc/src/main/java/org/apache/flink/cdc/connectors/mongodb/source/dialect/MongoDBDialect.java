@@ -183,7 +183,8 @@ public class MongoDBDialect implements DataSourceDialect<MongoDBSourceConfig> {
     }
 
     @Override
-    public FetchTask<SourceSplitBase> createFetchTask(SourceSplitBase sourceSplitBase) {
+    public FetchTask<SourceSplitBase, MongoDBSourceConfig> createFetchTask(
+            SourceSplitBase sourceSplitBase) {
         if (sourceSplitBase.isSnapshotSplit()) {
             return new MongoDBScanFetchTask(sourceSplitBase.asSnapshotSplit());
         } else {

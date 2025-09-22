@@ -101,14 +101,13 @@ class MySqlTimezoneITCase {
     private void testTemporalTypesWithMySqlServerTimezone(
             String timezone, boolean incrementalSnapshot) throws Exception {
         MySqlContainer mySqlContainer =
-                (MySqlContainer)
-                        new MySqlContainer()
-                                .withConfigurationOverride(buildMySqlConfigWithTimezone(timezone))
-                                .withSetupSQL("docker/setup.sql")
-                                .withDatabaseName("flink-test")
-                                .withUsername("flinkuser")
-                                .withPassword("flinkpw")
-                                .withLogConsumer(new Slf4jLogConsumer(LOG));
+                new MySqlContainer()
+                        .withConfigurationOverride(buildMySqlConfigWithTimezone(timezone))
+                        .withSetupSQL("docker/setup.sql")
+                        .withDatabaseName("flink-test")
+                        .withUsername("flinkuser")
+                        .withPassword("flinkpw")
+                        .withLogConsumer(new Slf4jLogConsumer(LOG));
 
         LOG.info("Starting containers...");
         Startables.deepStart(Stream.of(mySqlContainer)).join();
@@ -198,7 +197,7 @@ class MySqlTimezoneITCase {
         assertEqualsInOrder(
                 Arrays.asList(expectedBinlog), fetchRows(iterator, expectedBinlog.length));
 
-        result.getJobClient().get().cancel().get();
+        result.getJobClient().orElseThrow().cancel().get();
         mySqlContainer.stop();
     }
 

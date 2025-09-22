@@ -21,16 +21,12 @@ import org.testcontainers.containers.ContainerLaunchException;
 import org.testcontainers.containers.JdbcDatabaseContainer;
 import org.testcontainers.utility.DockerImageName;
 
-import java.util.HashSet;
-import java.util.Set;
-
 /**
  * Docker container for MySQL. The difference between this class and {@link
  * org.testcontainers.containers.MySQLContainer} is that TC MySQLContainer has problems when
  * overriding mysql conf file, i.e. my.cnf.
  */
-@SuppressWarnings("rawtypes")
-public class MySqlContainer extends JdbcDatabaseContainer {
+public class MySqlContainer extends JdbcDatabaseContainer<MySqlContainer> {
 
     public static final String IMAGE = "mysql";
     public static final Integer MYSQL_PORT = 3306;
@@ -50,11 +46,6 @@ public class MySqlContainer extends JdbcDatabaseContainer {
     public MySqlContainer(MySqlVersion version) {
         super(DockerImageName.parse(IMAGE + ":" + version.getVersion()));
         addExposedPort(MYSQL_PORT);
-    }
-
-    @Override
-    protected Set<Integer> getLivenessCheckPorts() {
-        return new HashSet<>(getMappedPort(MYSQL_PORT));
     }
 
     @Override
@@ -147,13 +138,11 @@ public class MySqlContainer extends JdbcDatabaseContainer {
         return "SELECT 1";
     }
 
-    @SuppressWarnings("unchecked")
     public MySqlContainer withConfigurationOverride(String s) {
         parameters.put(MY_CNF_CONFIG_OVERRIDE_PARAM_NAME, s);
         return this;
     }
 
-    @SuppressWarnings("unchecked")
     public MySqlContainer withSetupSQL(String sqlPath) {
         parameters.put(SETUP_SQL_PARAM_NAME, sqlPath);
         return this;

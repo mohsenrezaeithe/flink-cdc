@@ -17,10 +17,11 @@
 
 package org.apache.flink.cdc.connectors.db2.table;
 
-import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.cdc.connectors.db2.Db2TestBase;
 import org.apache.flink.cdc.connectors.utils.ExternalResourceProxy;
 import org.apache.flink.cdc.connectors.utils.StaticExternalResourceProxy;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.RestartStrategyOptions;
 import org.apache.flink.runtime.minicluster.RpcServiceSharing;
 import org.apache.flink.runtime.testutils.MiniClusterResourceConfiguration;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
@@ -66,19 +67,26 @@ class Db2ConnectorITCase extends Db2TestBase {
                                     .withHaLeadershipControl()
                                     .build()));
 
-    private final StreamExecutionEnvironment env =
-            StreamExecutionEnvironment.getExecutionEnvironment();
-    private final StreamTableEnvironment tEnv =
-            StreamTableEnvironment.create(
-                    env, EnvironmentSettings.newInstance().inStreamingMode().build());
+    private final StreamExecutionEnvironment env;
+    private final StreamTableEnvironment tEnv;
 
     @RegisterExtension
     public static StaticExternalResourceProxy<LegacyRowResource> usesLegacyRows =
             new StaticExternalResourceProxy<>(LegacyRowResource.INSTANCE);
 
+    private Db2ConnectorITCase() {
+        final Configuration conf = new Configuration();
+        conf.set(
+                RestartStrategyOptions.RESTART_STRATEGY,
+                RestartStrategyOptions.RestartStrategyType.NO_RESTART_STRATEGY.getMainValue());
+        this.env = StreamExecutionEnvironment.getExecutionEnvironment(conf);
+        this.tEnv =
+                StreamTableEnvironment.create(
+                        env, EnvironmentSettings.newInstance().inStreamingMode().build());
+    }
+
     public void setup(boolean incrementalSnapshot) {
         TestValuesTableFactory.clearAllData();
-        env.setRestartStrategy(RestartStrategies.noRestart());
         if (incrementalSnapshot) {
             env.setParallelism(DEFAULT_PARALLELISM);
             env.enableCheckpointing(1000);
@@ -90,7 +98,7 @@ class Db2ConnectorITCase extends Db2TestBase {
     private void cancelJobIfRunning(TableResult result)
             throws InterruptedException, ExecutionException {
         try {
-            result.getJobClient().get().cancel().get();
+            result.getJobClient().orElseThrow().cancel().get();
         } catch (IllegalStateException ignored) {
             // job isn't running, ignore it
         }
@@ -342,7 +350,7 @@ class Db2ConnectorITCase extends Db2TestBase {
         // wait for the source startup, we don't have a better way to wait it, use sleep for now
         do {
             Thread.sleep(5000L);
-        } while (result.getJobClient().get().getJobStatus().get() != RUNNING);
+        } while (result.getJobClient().orElseThrow().getJobStatus().get() != RUNNING);
         Thread.sleep(30000L);
         LOG.info("Snapshot should end and start to read binlog.");
 

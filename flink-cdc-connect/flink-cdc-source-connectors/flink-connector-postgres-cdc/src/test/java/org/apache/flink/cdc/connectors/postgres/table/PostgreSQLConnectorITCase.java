@@ -17,9 +17,10 @@
 
 package org.apache.flink.cdc.connectors.postgres.table;
 
-import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.cdc.connectors.postgres.PostgresTestBase;
 import org.apache.flink.cdc.connectors.utils.StaticExternalResourceProxy;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.RestartStrategyOptions;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.api.EnvironmentSettings;
 import org.apache.flink.table.api.TableResult;
@@ -57,11 +58,8 @@ import static org.testcontainers.containers.PostgreSQLContainer.POSTGRESQL_PORT;
 /** Integration tests for PostgreSQL Table source. */
 class PostgreSQLConnectorITCase extends PostgresTestBase {
 
-    private final StreamExecutionEnvironment env =
-            StreamExecutionEnvironment.getExecutionEnvironment();
-    private final StreamTableEnvironment tEnv =
-            StreamTableEnvironment.create(
-                    env, EnvironmentSettings.newInstance().inStreamingMode().build());
+    private final StreamExecutionEnvironment env;
+    private final StreamTableEnvironment tEnv;
 
     /** Use postgis plugin to test the GIS type. */
     protected static final DockerImageName POSTGIS_IMAGE =
@@ -83,12 +81,23 @@ class PostgreSQLConnectorITCase extends PostgresTestBase {
                             "-c",
                             "wal_level=logical");
 
+    private PostgreSQLConnectorITCase() {
+        final Configuration conf = new Configuration();
+        conf.set(
+                RestartStrategyOptions.RESTART_STRATEGY,
+                RestartStrategyOptions.RestartStrategyType.NO_RESTART_STRATEGY.getMainValue());
+        this.env = StreamExecutionEnvironment.getExecutionEnvironment(conf);
+        this.tEnv =
+                StreamTableEnvironment.create(
+                        this.env, EnvironmentSettings.newInstance().inStreamingMode().build());
+    }
+
     @RegisterExtension
     public static StaticExternalResourceProxy<LegacyRowResource> usesLegacyRows =
             new StaticExternalResourceProxy<>(LegacyRowResource.INSTANCE);
 
     @BeforeAll
-    static void startContainers() throws Exception {
+    static void startContainers() {
         LOG.info("Starting containers...");
         Startables.deepStart(Stream.of(POSTGRES_CONTAINER, POSTGIS_CONTAINER)).join();
         LOG.info("Containers are started.");
@@ -103,7 +112,6 @@ class PostgreSQLConnectorITCase extends PostgresTestBase {
 
     void setup(boolean parallelismSnapshot) {
         TestValuesTableFactory.clearAllData();
-        env.setRestartStrategy(RestartStrategies.noRestart());
         if (parallelismSnapshot) {
             env.setParallelism(4);
             env.enableCheckpointing(200);
@@ -229,7 +237,7 @@ class PostgreSQLConnectorITCase extends PostgresTestBase {
         List<String> actual = TestValuesTableFactory.getResultsAsStrings("sink");
         Assertions.assertThat(actual).containsExactlyInAnyOrder(expected);
 
-        result.getJobClient().get().cancel().get();
+        result.getJobClient().orElseThrow().cancel().get();
     }
 
     @ParameterizedTest
@@ -347,7 +355,7 @@ class PostgreSQLConnectorITCase extends PostgresTestBase {
         List<String> actual = TestValuesTableFactory.getResultsAsStrings("sink");
         Assertions.assertThat(actual).containsExactlyInAnyOrder(expected);
 
-        result.getJobClient().get().cancel().get();
+        result.getJobClient().orElseThrow().cancel().get();
     }
 
     @ParameterizedTest
@@ -421,7 +429,7 @@ class PostgreSQLConnectorITCase extends PostgresTestBase {
         List<String> actual = TestValuesTableFactory.getResultsAsStrings("sink");
         Assertions.assertThat(actual).containsExactlyInAnyOrder(expected);
 
-        result.getJobClient().get().cancel().get();
+        result.getJobClient().orElseThrow().cancel().get();
     }
 
     @Test
@@ -514,7 +522,7 @@ class PostgreSQLConnectorITCase extends PostgresTestBase {
 
         List<String> actual = TestValuesTableFactory.getResultsAsStrings("sink");
         Assertions.assertThat(actual).containsExactlyInAnyOrder(expected);
-        result.getJobClient().get().cancel().get();
+        result.getJobClient().orElseThrow().cancel().get();
     }
 
     @ParameterizedTest
@@ -702,7 +710,7 @@ class PostgreSQLConnectorITCase extends PostgresTestBase {
         List<String> actual = TestValuesTableFactory.getRawResultsAsStrings("sink");
         Assertions.assertThat(actual).isEqualTo(expected);
 
-        result.getJobClient().get().cancel().get();
+        result.getJobClient().orElseThrow().cancel().get();
     }
 
     @ParameterizedTest
@@ -844,7 +852,7 @@ class PostgreSQLConnectorITCase extends PostgresTestBase {
                                 + ",inventory,products,-D,111,scooter,Big 2-wheel scooter ,5.170)");
         List<String> actual = TestValuesTableFactory.getRawResultsAsStrings("sink");
         Assertions.assertThat(actual).containsExactlyInAnyOrderElementsOf(expected);
-        result.getJobClient().get().cancel().get();
+        result.getJobClient().orElseThrow().cancel().get();
     }
 
     @ParameterizedTest
@@ -965,7 +973,7 @@ class PostgreSQLConnectorITCase extends PostgresTestBase {
         List<String> actual = TestValuesTableFactory.getResultsAsStrings("sink");
         Assertions.assertThat(actual).containsExactlyInAnyOrder(expected);
 
-        result.getJobClient().get().cancel().get();
+        result.getJobClient().orElseThrow().cancel().get();
     }
 
     @ParameterizedTest
@@ -1032,7 +1040,7 @@ class PostgreSQLConnectorITCase extends PostgresTestBase {
         expected.addAll(Arrays.asList("-U[1, a]", "+U[1, null]"));
         CloseableIterator<Row> iterator = tableResult.collect();
         assertEqualsInAnyOrder(expected, fetchRows(iterator, expected.size()));
-        tableResult.getJobClient().get().cancel().get();
+        tableResult.getJobClient().orElseThrow().cancel().get();
         RowUtils.USE_LEGACY_TO_STRING = true;
     }
 }

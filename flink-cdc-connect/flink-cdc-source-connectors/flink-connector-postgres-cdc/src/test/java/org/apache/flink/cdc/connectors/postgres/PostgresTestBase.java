@@ -95,7 +95,7 @@ public abstract class PostgresTestBase extends AbstractTestBase {
                             "wal_level=logical");
 
     @BeforeAll
-    static void startContainers() throws Exception {
+    static void startContainers() {
         LOG.info("Starting containers...");
         Startables.deepStart(Stream.of(POSTGRES_CONTAINER)).join();
         LOG.info("Containers are started.");
@@ -110,13 +110,13 @@ public abstract class PostgresTestBase extends AbstractTestBase {
         LOG.info("Containers are stopped.");
     }
 
-    protected Connection getJdbcConnection(PostgreSQLContainer container) throws SQLException {
+    protected Connection getJdbcConnection(PostgreSQLContainer<?> container) throws SQLException {
         return DriverManager.getConnection(
                 container.getJdbcUrl(), container.getUsername(), container.getPassword());
     }
 
-    public static Connection getJdbcConnection(PostgreSQLContainer container, String databaseName)
-            throws SQLException {
+    public static Connection getJdbcConnection(
+            PostgreSQLContainer<?> container, String databaseName) throws SQLException {
         String jdbcUrl =
                 String.format(
                         PostgresConnectionPoolFactory.JDBC_URL_PATTERN,
@@ -137,7 +137,7 @@ public abstract class PostgresTestBase extends AbstractTestBase {
      * Executes a JDBC statement using the default jdbc config without autocommitting the
      * connection.
      */
-    protected void initializePostgresTable(PostgreSQLContainer container, String sqlFile) {
+    protected void initializePostgresTable(PostgreSQLContainer<?> container, String sqlFile) {
         final String ddlFile = String.format("ddl/%s.sql", sqlFile);
         final URL ddlTestFile = PostgresTestBase.class.getClassLoader().getResource(ddlFile);
         Assertions.assertThat(ddlTestFile).withFailMessage("Cannot locate " + ddlFile).isNotNull();

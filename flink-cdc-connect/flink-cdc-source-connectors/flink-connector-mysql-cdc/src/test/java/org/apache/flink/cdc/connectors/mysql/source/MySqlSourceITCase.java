@@ -19,7 +19,6 @@ package org.apache.flink.cdc.connectors.mysql.source;
 
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
-import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.cdc.connectors.mysql.debezium.DebeziumUtils;
@@ -36,6 +35,8 @@ import org.apache.flink.cdc.debezium.DebeziumDeserializationSchema;
 import org.apache.flink.cdc.debezium.StringDebeziumDeserializationSchema;
 import org.apache.flink.cdc.debezium.table.MetadataConverter;
 import org.apache.flink.cdc.debezium.table.RowDataDebeziumDeserializeSchema;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.RestartStrategyOptions;
 import org.apache.flink.core.execution.JobClient;
 import org.apache.flink.metrics.Gauge;
 import org.apache.flink.metrics.Metric;
@@ -194,16 +195,21 @@ class MySqlSourceITCase extends MySqlSourceTestBase {
     @MethodSource("parameters")
     void testReadSingleTableWithSingleParallelismAndSkipBackFill(
             String tableName, String chunkColumnName, String assignEndingFirst) throws Exception {
-        HashMap<String, String> option = new HashMap<>();
-        option.put("scan.incremental.snapshot.backfill.skip", "true");
-        option.put("scan.incremental.snapshot.chunk.size", "1");
+        final Configuration restartStrategyConf = new Configuration();
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY,
+                RestartStrategyOptions.RestartStrategyType.FIXED_DELAY.getMainValue());
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_ATTEMPTS, 1);
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY_FIXED_DELAY_DELAY, Duration.ofSeconds(0));
         testMySqlParallelSource(
                 1,
                 DEFAULT_SCAN_STARTUP_MODE,
                 FailoverType.NONE,
                 FailoverPhase.NEVER,
                 new String[] {tableName},
-                RestartStrategies.fixedDelayRestart(1, 0),
+                restartStrategyConf,
                 tableName,
                 chunkColumnName,
                 Collections.singletonMap(
@@ -294,13 +300,21 @@ class MySqlSourceITCase extends MySqlSourceTestBase {
     @MethodSource("parameters")
     void testTaskManagerFailoverFromLatestOffset(
             String tableName, String chunkColumnName, String assignEndingFirst) throws Exception {
+        final Configuration restartStrategyConf = new Configuration();
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY,
+                RestartStrategyOptions.RestartStrategyType.FIXED_DELAY.getMainValue());
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_ATTEMPTS, 1);
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY_FIXED_DELAY_DELAY, Duration.ofSeconds(0));
         testMySqlParallelSource(
                 DEFAULT_PARALLELISM,
                 "latest-offset",
                 FailoverType.TM,
                 FailoverPhase.BINLOG,
                 new String[] {tableName, "customers_1"},
-                RestartStrategies.fixedDelayRestart(1, 0),
+                restartStrategyConf,
                 tableName,
                 chunkColumnName,
                 Collections.singletonMap(
@@ -342,13 +356,21 @@ class MySqlSourceITCase extends MySqlSourceTestBase {
     @MethodSource("parameters")
     void testJobManagerFailoverFromLatestOffset(
             String tableName, String chunkColumnName, String assignEndingFirst) throws Exception {
+        final Configuration restartStrategyConf = new Configuration();
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY,
+                RestartStrategyOptions.RestartStrategyType.FIXED_DELAY.getMainValue());
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_ATTEMPTS, 1);
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY_FIXED_DELAY_DELAY, Duration.ofSeconds(0));
         testMySqlParallelSource(
                 DEFAULT_PARALLELISM,
                 "latest-offset",
                 FailoverType.JM,
                 FailoverPhase.BINLOG,
                 new String[] {tableName, "customers_1"},
-                RestartStrategies.fixedDelayRestart(1, 0),
+                restartStrategyConf,
                 tableName,
                 chunkColumnName,
                 Collections.singletonMap(
@@ -393,13 +415,21 @@ class MySqlSourceITCase extends MySqlSourceTestBase {
         Map<String, String> options = new HashMap<>();
         options.put("debezium.snapshot.fetch.size", "2");
         options.put("debezium.max.batch.size", "3");
+        final Configuration restartStrategyConf = new Configuration();
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY,
+                RestartStrategyOptions.RestartStrategyType.FIXED_DELAY.getMainValue());
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_ATTEMPTS, 1);
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY_FIXED_DELAY_DELAY, Duration.ofSeconds(0));
         testMySqlParallelSource(
                 1,
                 DEFAULT_SCAN_STARTUP_MODE,
                 FailoverType.NONE,
                 FailoverPhase.NEVER,
                 new String[] {"customers"},
-                RestartStrategies.fixedDelayRestart(1, 0),
+                restartStrategyConf,
                 "customers",
                 "id",
                 options);
@@ -410,11 +440,19 @@ class MySqlSourceITCase extends MySqlSourceTestBase {
     @SuppressWarnings({"rawtypes", "unchecked"})
     void testSnapshotSplitReadingFailCrossCheckpoints(String tableName, String chunkColumnName)
             throws Exception {
+        final Configuration restartStrategyConf = new Configuration();
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY,
+                RestartStrategyOptions.RestartStrategyType.FIXED_DELAY.getMainValue());
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_ATTEMPTS, 1);
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY_FIXED_DELAY_DELAY, Duration.ofSeconds(0));
         customDatabase.createAndInitialize();
-        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        StreamExecutionEnvironment env =
+                StreamExecutionEnvironment.getExecutionEnvironment(restartStrategyConf);
         env.setParallelism(DEFAULT_PARALLELISM);
         env.enableCheckpointing(5000L);
-        env.setRestartStrategy(RestartStrategies.fixedDelayRestart(1, 0));
 
         // The sleeping source will sleep awhile after send per record
         MySqlSource<RowData> sleepingSource = buildSleepingSource(tableName, chunkColumnName);
@@ -446,14 +484,16 @@ class MySqlSourceITCase extends MySqlSourceTestBase {
                     "+I[2000, user_21, Shanghai, 123567891234]"
                 };
         TypeSerializer<RowData> serializer =
-                source.getTransformation().getOutputType().createSerializer(env.getConfig());
+                source.getTransformation()
+                        .getOutputType()
+                        .createSerializer(env.getConfig().getSerializerConfig());
         String accumulatorName = "dataStreamCollect_" + UUID.randomUUID();
         CollectSinkOperatorFactory<RowData> factory =
                 new CollectSinkOperatorFactory(serializer, accumulatorName);
         CollectSinkOperator<RowData> operator = (CollectSinkOperator) factory.getOperator();
         CollectResultIterator<RowData> iterator =
                 new CollectResultIterator(
-                        operator.getOperatorIdFuture(),
+                        operator.getOperatorID().toString(),
                         serializer,
                         accumulatorName,
                         env.getCheckpointConfig(),
@@ -771,8 +811,7 @@ class MySqlSourceITCase extends MySqlSourceTestBase {
         try (CloseableIterator<RowData> iterator =
                 env.fromSource(source, WatermarkStrategy.noWatermarks(), "Backfill Skipped Source")
                         .executeAndCollect()) {
-            List<String> records = fetchRowData(iterator, fetchSize, customerTable::stringify);
-            return records;
+            return this.fetchRowData(iterator, fetchSize, customerTable::stringify);
         }
     }
 
@@ -1002,14 +1041,16 @@ class MySqlSourceITCase extends MySqlSourceTestBase {
     private <T> CollectResultIterator<T> addCollector(
             StreamExecutionEnvironment env, DataStream<T> stream) {
         TypeSerializer<T> serializer =
-                stream.getTransformation().getOutputType().createSerializer(env.getConfig());
+                stream.getTransformation()
+                        .getOutputType()
+                        .createSerializer(env.getConfig().getSerializerConfig());
         String accumulatorName = "dataStreamCollect_" + UUID.randomUUID();
         CollectSinkOperatorFactory<T> factory =
                 new CollectSinkOperatorFactory<>(serializer, accumulatorName);
         CollectSinkOperator<T> operator = (CollectSinkOperator<T>) factory.getOperator();
         CollectResultIterator<T> iterator =
                 new CollectResultIterator<>(
-                        operator.getOperatorIdFuture(),
+                        operator.getOperatorID().toString(),
                         serializer,
                         accumulatorName,
                         env.getCheckpointConfig(),
@@ -1102,13 +1143,21 @@ class MySqlSourceITCase extends MySqlSourceTestBase {
             String chunkColumnName,
             Map<String, String> options)
             throws Exception {
+        final Configuration restartStrategyConf = new Configuration();
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY,
+                RestartStrategyOptions.RestartStrategyType.FIXED_DELAY.getMainValue());
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_ATTEMPTS, 1);
+        restartStrategyConf.set(
+                RestartStrategyOptions.RESTART_STRATEGY_FIXED_DELAY_DELAY, Duration.ofSeconds(0));
         testMySqlParallelSource(
                 parallelism,
                 DEFAULT_SCAN_STARTUP_MODE,
                 failoverType,
                 failoverPhase,
                 captureCustomerTables,
-                RestartStrategies.fixedDelayRestart(1, 0),
+                restartStrategyConf,
                 tableName,
                 chunkColumnName,
                 options);
@@ -1120,18 +1169,18 @@ class MySqlSourceITCase extends MySqlSourceTestBase {
             FailoverType failoverType,
             FailoverPhase failoverPhase,
             String[] captureCustomerTables,
-            RestartStrategies.RestartStrategyConfiguration restartStrategyConfiguration,
+            Configuration restartStrategyConfiguration,
             String tableName,
             String chunkColumnName,
             Map<String, String> otherOptions)
             throws Exception {
         customDatabase.createAndInitialize();
-        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        StreamExecutionEnvironment env =
+                StreamExecutionEnvironment.getExecutionEnvironment(restartStrategyConfiguration);
         StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
 
         env.setParallelism(parallelism);
         env.enableCheckpointing(200L);
-        env.setRestartStrategy(restartStrategyConfiguration);
         String sourceDDL =
                 format(
                         "CREATE TABLE customers ("
@@ -1191,7 +1240,7 @@ class MySqlSourceITCase extends MySqlSourceTestBase {
         // second step: check the binlog data
         checkBinlogData(tableResult, failoverType, failoverPhase, captureCustomerTables);
 
-        tableResult.getJobClient().get().cancel().get();
+        tableResult.getJobClient().orElseThrow().cancel().get();
     }
 
     private void checkSnapshotData(
@@ -1231,7 +1280,7 @@ class MySqlSourceITCase extends MySqlSourceTestBase {
         }
 
         CloseableIterator<Row> iterator = tableResult.collect();
-        JobID jobId = tableResult.getJobClient().get().getJobID();
+        JobID jobId = tableResult.getJobClient().orElseThrow().getJobID();
 
         // trigger failover after some snapshot splits read finished
         if (failoverPhase == FailoverPhase.SNAPSHOT && iterator.hasNext()) {
@@ -1254,7 +1303,7 @@ class MySqlSourceITCase extends MySqlSourceTestBase {
             throws Exception {
         waitUntilJobRunning(tableResult);
         CloseableIterator<Row> iterator = tableResult.collect();
-        JobID jobId = tableResult.getJobClient().get().getJobID();
+        JobID jobId = tableResult.getJobClient().orElseThrow().getJobID();
 
         for (String tableId : captureCustomerTables) {
             makeFirstPartBinlogEvents(
@@ -1369,7 +1418,7 @@ class MySqlSourceITCase extends MySqlSourceTestBase {
      */
     private void makeFirstPartBinlogEvents(JdbcConnection connection, String tableId)
             throws SQLException {
-        try {
+        try (connection) {
             connection.setAutoCommit(false);
 
             // make binlog events for the first split
@@ -1379,8 +1428,6 @@ class MySqlSourceITCase extends MySqlSourceTestBase {
                     "INSERT INTO " + tableId + " VALUES(102, 'user_2','Shanghai','123567891234')",
                     "UPDATE " + tableId + " SET address = 'Shanghai' where id = 103");
             connection.commit();
-        } finally {
-            connection.close();
         }
     }
 
@@ -1390,7 +1437,7 @@ class MySqlSourceITCase extends MySqlSourceTestBase {
      */
     private void makeSecondPartBinlogEvents(JdbcConnection connection, String tableId)
             throws SQLException {
-        try {
+        try (connection) {
             connection.setAutoCommit(false);
 
             // make binlog events for split-1
@@ -1405,8 +1452,6 @@ class MySqlSourceITCase extends MySqlSourceTestBase {
                             + " (2002, 'user_23','Shanghai','123567891234'),"
                             + "(2003, 'user_24','Shanghai','123567891234')");
             connection.commit();
-        } finally {
-            connection.close();
         }
     }
 
@@ -1430,14 +1475,14 @@ class MySqlSourceITCase extends MySqlSourceTestBase {
             throws InterruptedException, ExecutionException {
         do {
             Thread.sleep(5000L);
-        } while (tableResult.getJobClient().get().getJobStatus().get() != RUNNING);
+        } while (tableResult.getJobClient().orElseThrow().getJobStatus().get() != RUNNING);
     }
 
     private boolean hasNextData(final CloseableIterator<?> iterator)
             throws InterruptedException, ExecutionException {
         ExecutorService executor = Executors.newSingleThreadExecutor();
         try {
-            FutureTask<Boolean> future = new FutureTask(iterator::hasNext);
+            FutureTask<Boolean> future = new FutureTask<>(iterator::hasNext);
             executor.execute(future);
             return future.get(3, TimeUnit.SECONDS);
         } catch (TimeoutException e) {

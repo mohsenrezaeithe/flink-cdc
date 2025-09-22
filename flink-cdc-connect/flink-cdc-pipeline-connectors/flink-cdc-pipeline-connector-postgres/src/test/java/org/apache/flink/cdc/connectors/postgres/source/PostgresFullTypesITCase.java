@@ -18,7 +18,6 @@
 package org.apache.flink.cdc.connectors.postgres.source;
 
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
-import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.cdc.common.data.ArrayData;
 import org.apache.flink.cdc.common.data.DateData;
@@ -41,6 +40,8 @@ import org.apache.flink.cdc.connectors.postgres.PostgresTestBase;
 import org.apache.flink.cdc.connectors.postgres.factory.PostgresDataSourceFactory;
 import org.apache.flink.cdc.connectors.postgres.source.config.PostgresSourceConfigFactory;
 import org.apache.flink.cdc.runtime.typeutils.EventTypeInfo;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.RestartStrategyOptions;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.planner.factories.TestValuesTableFactory;
 import org.apache.flink.table.types.logical.DecimalType;
@@ -76,8 +77,6 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.stream.Stream;
 
-import static org.testcontainers.containers.PostgreSQLContainer.POSTGRESQL_PORT;
-
 /** Test cases for {@link PostgresTestBase} with full types. */
 public class PostgresFullTypesITCase extends PostgresTestBase {
     private static final Logger LOG = LoggerFactory.getLogger(PostgresFullTypesITCase.class);
@@ -105,13 +104,20 @@ public class PostgresFullTypesITCase extends PostgresTestBase {
                             "-c",
                             "max_wal_senders=20");
 
-    private static final StreamExecutionEnvironment env =
-            StreamExecutionEnvironment.getExecutionEnvironment();
+    private static final StreamExecutionEnvironment env;
+
+    static {
+        final Configuration conf = new Configuration();
+        conf.set(
+                RestartStrategyOptions.RESTART_STRATEGY,
+                RestartStrategyOptions.RestartStrategyType.NO_RESTART_STRATEGY.getMainValue());
+        env = StreamExecutionEnvironment.getExecutionEnvironment(conf);
+    }
 
     private String slotName;
 
     @BeforeAll
-    static void startContainers() throws Exception {
+    static void startContainers() {
         LOG.info("Starting containers...");
         Startables.deepStart(Stream.of(POSTGIS_CONTAINER)).join();
         LOG.info("Containers are started.");
@@ -133,7 +139,6 @@ public class PostgresFullTypesITCase extends PostgresTestBase {
         TestValuesTableFactory.clearAllData();
         env.setParallelism(4);
         env.enableCheckpointing(2000);
-        env.setRestartStrategy(RestartStrategies.noRestart());
         slotName = getSlotName();
     }
 
@@ -156,7 +161,9 @@ public class PostgresFullTypesITCase extends PostgresTestBase {
                 (PostgresSourceConfigFactory)
                         new PostgresSourceConfigFactory()
                                 .hostname(POSTGIS_CONTAINER.getHost())
-                                .port(POSTGIS_CONTAINER.getMappedPort(POSTGRESQL_PORT))
+                                .port(
+                                        POSTGIS_CONTAINER.getMappedPort(
+                                                PostgreSQLContainer.POSTGRESQL_PORT))
                                 .username(TEST_USER)
                                 .password(TEST_PASSWORD)
                                 .databaseList(POSTGRES_CONTAINER.getDatabaseName())
@@ -261,7 +268,9 @@ public class PostgresFullTypesITCase extends PostgresTestBase {
                 (PostgresSourceConfigFactory)
                         new PostgresSourceConfigFactory()
                                 .hostname(POSTGIS_CONTAINER.getHost())
-                                .port(POSTGIS_CONTAINER.getMappedPort(POSTGRESQL_PORT))
+                                .port(
+                                        POSTGIS_CONTAINER.getMappedPort(
+                                                PostgreSQLContainer.POSTGRESQL_PORT))
                                 .username(TEST_USER)
                                 .password(TEST_PASSWORD)
                                 .databaseList(POSTGRES_CONTAINER.getDatabaseName())
@@ -317,7 +326,9 @@ public class PostgresFullTypesITCase extends PostgresTestBase {
                 (PostgresSourceConfigFactory)
                         new PostgresSourceConfigFactory()
                                 .hostname(POSTGIS_CONTAINER.getHost())
-                                .port(POSTGIS_CONTAINER.getMappedPort(POSTGRESQL_PORT))
+                                .port(
+                                        POSTGIS_CONTAINER.getMappedPort(
+                                                PostgreSQLContainer.POSTGRESQL_PORT))
                                 .username(TEST_USER)
                                 .password(TEST_PASSWORD)
                                 .databaseList(POSTGRES_CONTAINER.getDatabaseName())
@@ -369,7 +380,9 @@ public class PostgresFullTypesITCase extends PostgresTestBase {
                 (PostgresSourceConfigFactory)
                         new PostgresSourceConfigFactory()
                                 .hostname(POSTGIS_CONTAINER.getHost())
-                                .port(POSTGIS_CONTAINER.getMappedPort(POSTGRESQL_PORT))
+                                .port(
+                                        POSTGIS_CONTAINER.getMappedPort(
+                                                PostgreSQLContainer.POSTGRESQL_PORT))
                                 .username(TEST_USER)
                                 .password(TEST_PASSWORD)
                                 .databaseList(POSTGRES_CONTAINER.getDatabaseName())
@@ -416,7 +429,9 @@ public class PostgresFullTypesITCase extends PostgresTestBase {
                 (PostgresSourceConfigFactory)
                         new PostgresSourceConfigFactory()
                                 .hostname(POSTGIS_CONTAINER.getHost())
-                                .port(POSTGIS_CONTAINER.getMappedPort(POSTGRESQL_PORT))
+                                .port(
+                                        POSTGIS_CONTAINER.getMappedPort(
+                                                PostgreSQLContainer.POSTGRESQL_PORT))
                                 .username(TEST_USER)
                                 .password(TEST_PASSWORD)
                                 .databaseList(POSTGRES_CONTAINER.getDatabaseName())
@@ -467,7 +482,9 @@ public class PostgresFullTypesITCase extends PostgresTestBase {
                 (PostgresSourceConfigFactory)
                         new PostgresSourceConfigFactory()
                                 .hostname(POSTGIS_CONTAINER.getHost())
-                                .port(POSTGIS_CONTAINER.getMappedPort(POSTGRESQL_PORT))
+                                .port(
+                                        POSTGIS_CONTAINER.getMappedPort(
+                                                PostgreSQLContainer.POSTGRESQL_PORT))
                                 .username(TEST_USER)
                                 .password(TEST_PASSWORD)
                                 .databaseList(POSTGRES_CONTAINER.getDatabaseName())
@@ -518,7 +535,9 @@ public class PostgresFullTypesITCase extends PostgresTestBase {
                 (PostgresSourceConfigFactory)
                         new PostgresSourceConfigFactory()
                                 .hostname(POSTGIS_CONTAINER.getHost())
-                                .port(POSTGIS_CONTAINER.getMappedPort(POSTGRESQL_PORT))
+                                .port(
+                                        POSTGIS_CONTAINER.getMappedPort(
+                                                PostgreSQLContainer.POSTGRESQL_PORT))
                                 .username(TEST_USER)
                                 .password(TEST_PASSWORD)
                                 .databaseList(POSTGRES_CONTAINER.getDatabaseName())
@@ -564,7 +583,9 @@ public class PostgresFullTypesITCase extends PostgresTestBase {
                 (PostgresSourceConfigFactory)
                         new PostgresSourceConfigFactory()
                                 .hostname(POSTGIS_CONTAINER.getHost())
-                                .port(POSTGIS_CONTAINER.getMappedPort(POSTGRESQL_PORT))
+                                .port(
+                                        POSTGIS_CONTAINER.getMappedPort(
+                                                PostgreSQLContainer.POSTGRESQL_PORT))
                                 .username(TEST_USER)
                                 .password(TEST_PASSWORD)
                                 .databaseList(POSTGRES_CONTAINER.getDatabaseName())
@@ -615,7 +636,9 @@ public class PostgresFullTypesITCase extends PostgresTestBase {
                 (PostgresSourceConfigFactory)
                         new PostgresSourceConfigFactory()
                                 .hostname(POSTGIS_CONTAINER.getHost())
-                                .port(POSTGIS_CONTAINER.getMappedPort(POSTGRESQL_PORT))
+                                .port(
+                                        POSTGIS_CONTAINER.getMappedPort(
+                                                PostgreSQLContainer.POSTGRESQL_PORT))
                                 .username(TEST_USER)
                                 .password(TEST_PASSWORD)
                                 .databaseList(POSTGRES_CONTAINER.getDatabaseName())
@@ -663,7 +686,9 @@ public class PostgresFullTypesITCase extends PostgresTestBase {
                 (PostgresSourceConfigFactory)
                         new PostgresSourceConfigFactory()
                                 .hostname(POSTGIS_CONTAINER.getHost())
-                                .port(POSTGIS_CONTAINER.getMappedPort(POSTGRESQL_PORT))
+                                .port(
+                                        POSTGIS_CONTAINER.getMappedPort(
+                                                PostgreSQLContainer.POSTGRESQL_PORT))
                                 .username(TEST_USER)
                                 .password(TEST_PASSWORD)
                                 .databaseList(POSTGRES_CONTAINER.getDatabaseName())
@@ -716,7 +741,9 @@ public class PostgresFullTypesITCase extends PostgresTestBase {
                 (PostgresSourceConfigFactory)
                         new PostgresSourceConfigFactory()
                                 .hostname(POSTGIS_CONTAINER.getHost())
-                                .port(POSTGIS_CONTAINER.getMappedPort(POSTGRESQL_PORT))
+                                .port(
+                                        POSTGIS_CONTAINER.getMappedPort(
+                                                PostgreSQLContainer.POSTGRESQL_PORT))
                                 .username(TEST_USER)
                                 .password(TEST_PASSWORD)
                                 .databaseList(POSTGRES_CONTAINER.getDatabaseName())
@@ -771,7 +798,9 @@ public class PostgresFullTypesITCase extends PostgresTestBase {
                 (PostgresSourceConfigFactory)
                         new PostgresSourceConfigFactory()
                                 .hostname(POSTGIS_CONTAINER.getHost())
-                                .port(POSTGIS_CONTAINER.getMappedPort(POSTGRESQL_PORT))
+                                .port(
+                                        POSTGIS_CONTAINER.getMappedPort(
+                                                PostgreSQLContainer.POSTGRESQL_PORT))
                                 .username(TEST_USER)
                                 .password(TEST_PASSWORD)
                                 .databaseList(POSTGRES_CONTAINER.getDatabaseName())

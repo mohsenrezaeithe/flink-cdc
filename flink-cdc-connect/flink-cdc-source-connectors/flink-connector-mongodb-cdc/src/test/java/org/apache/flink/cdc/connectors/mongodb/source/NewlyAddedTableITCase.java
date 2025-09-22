@@ -17,32 +17,48 @@
 
 package org.apache.flink.cdc.connectors.mongodb.source;
 
-import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.cdc.connectors.mongodb.utils.MongoDBAssertUtils;
+import org.apache.flink.cdc.connectors.mongodb.utils.MongoDBContainer;
 import org.apache.flink.cdc.connectors.mongodb.utils.MongoDBTestUtils;
+import org.apache.flink.cdc.connectors.utils.ExternalResourceProxy;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.RestartStrategyOptions;
+import org.apache.flink.configuration.StateRecoveryOptions;
 import org.apache.flink.core.execution.JobClient;
+import org.apache.flink.core.execution.SavepointFormatType;
 import org.apache.flink.runtime.checkpoint.CheckpointException;
-import org.apache.flink.runtime.jobgraph.SavepointConfigOptions;
+import org.apache.flink.runtime.minicluster.RpcServiceSharing;
+import org.apache.flink.runtime.testutils.MiniClusterResourceConfiguration;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.api.TableResult;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 import org.apache.flink.table.planner.factories.TestValuesTableFactory;
+import org.apache.flink.test.util.MiniClusterWithClientResource;
 import org.apache.flink.util.ExceptionUtils;
+import org.apache.flink.util.Preconditions;
 
+import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Updates;
 import org.bson.Document;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.testcontainers.containers.output.Slf4jLogConsumer;
+import org.testcontainers.lifecycle.Startables;
 
 import java.nio.file.Path;
 import java.sql.SQLException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -55,18 +71,51 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
-
-import static java.lang.String.format;
-import static org.apache.flink.cdc.connectors.mongodb.utils.MongoDBContainer.FLINK_USER;
-import static org.apache.flink.cdc.connectors.mongodb.utils.MongoDBContainer.FLINK_USER_PASSWORD;
-import static org.apache.flink.util.Preconditions.checkState;
+import java.util.stream.Stream;
 
 /** IT tests to cover various newly added collections during capture process. */
 @Timeout(value = 500, unit = TimeUnit.SECONDS)
 class NewlyAddedTableITCase extends MongoDBSourceTestBase {
 
+    private static final Logger LOG = LoggerFactory.getLogger(NewlyAddedTableITCase.class);
+
+    protected MongoClient mongodbClient;
+
+    private static final MongoDBContainer MONGO_CONTAINER =
+            new MongoDBContainer("mongo:" + getMongoVersion())
+                    .withSharding()
+                    .withLogConsumer(new Slf4jLogConsumer(LOG));
+
+    @BeforeAll
+    static void startContainers() {
+        LOG.info("Starting containers...");
+        Startables.deepStart(Stream.of(MONGO_CONTAINER)).join();
+        LOG.info("Containers are started.");
+    }
+
+    @AfterAll
+    static void stopContainers() {
+        LOG.info("Stopping containers...");
+        if (MONGO_CONTAINER != null) {
+            MONGO_CONTAINER.stop();
+        }
+        LOG.info("Containers are stopped.");
+    }
+
+    @RegisterExtension
+    public final ExternalResourceProxy<MiniClusterWithClientResource> miniClusterResource =
+            new ExternalResourceProxy<>(
+                    new MiniClusterWithClientResource(
+                            new MiniClusterResourceConfiguration.Builder()
+                                    .setNumberTaskManagers(1)
+                                    .setNumberSlotsPerTaskManager(DEFAULT_PARALLELISM)
+                                    .setRpcServiceSharing(RpcServiceSharing.DEDICATED)
+                                    .setConfiguration(
+                                            metricReporter.addToConfiguration(new Configuration()))
+                                    .withHaLeadershipControl()
+                                    .build()));
+
     private String customerDatabase;
-    protected static final int DEFAULT_PARALLELISM = 4;
 
     @TempDir private static Path tempDir;
 
@@ -84,6 +133,7 @@ class NewlyAddedTableITCase extends MongoDBSourceTestBase {
                 "use admin; db.runCommand({ setClusterParameter: { changeStreamOptions: { preAndPostImages: { expireAfterSeconds: 'off' } } } })");
 
         // mock continuous changelog during the newly added collections capturing process
+        mongodbClient = this.createClients(MONGO_CONTAINER);
         MongoDatabase mongoDatabase = mongodbClient.getDatabase(customerDatabase);
         MongoCollection<Document> mongoCollection = mongoDatabase.getCollection(collectionName);
         mockChangelogExecutor.schedule(
@@ -106,6 +156,10 @@ class NewlyAddedTableITCase extends MongoDBSourceTestBase {
             mongoDatabase.drop();
         }
         miniClusterResource.get().cancelAllJobs();
+        if (mongodbClient != null) {
+            mongodbClient.close();
+            mongodbClient = null;
+        }
     }
 
     @Test
@@ -374,17 +428,17 @@ class NewlyAddedTableITCase extends MongoDBSourceTestBase {
             TableResult tableResult =
                     tEnv.executeSql(
                             "insert into sink select collection_name, cid, country, city, detail_address from address");
-            JobClient jobClient = tableResult.getJobClient().get();
+            JobClient jobClient = tableResult.getJobClient().orElseThrow();
             // first round's snapshot data
             fetchedDataList.addAll(
                     Arrays.asList(
-                            format(
+                            String.format(
                                     "+I[%s, 416874195632735147, China, %s, %s West Town address 1]",
                                     collection0, cityName0, cityName0),
-                            format(
+                            String.format(
                                     "+I[%s, 416927583791428523, China, %s, %s West Town address 2]",
                                     collection0, cityName0, cityName0),
-                            format(
+                            String.format(
                                     "+I[%s, 417022095255614379, China, %s, %s West Town address 3]",
                                     collection0, cityName0, cityName0)));
 
@@ -396,13 +450,13 @@ class NewlyAddedTableITCase extends MongoDBSourceTestBase {
             makeOplogForAddressTableInRound(database, collection0, 0);
             fetchedDataList.addAll(
                     Arrays.asList(
-                            format(
+                            String.format(
                                     "-U[%s, 416874195632735147, China, %s, %s West Town address 1]",
                                     collection0, cityName0, cityName0),
-                            format(
+                            String.format(
                                     "+U[%s, 416874195632735147, China_0, %s, %s West Town address 1]",
                                     collection0, cityName0, cityName0),
-                            format(
+                            String.format(
                                     "+I[%s, %d, China, %s, %s West Town address 4]",
                                     collection0, 417022095255614380L, cityName0, cityName0)));
             MongoDBTestUtils.waitForSinkSize("sink", fetchedDataList.size());
@@ -439,18 +493,18 @@ class NewlyAddedTableITCase extends MongoDBSourceTestBase {
             TableResult tableResult =
                     tEnv.executeSql(
                             "insert into sink select collection_name, cid, country, city, detail_address from address");
-            JobClient jobClient = tableResult.getJobClient().get();
+            JobClient jobClient = tableResult.getJobClient().orElseThrow();
 
             // this round's snapshot data
             fetchedDataList.addAll(
                     Arrays.asList(
-                            format(
+                            String.format(
                                     "+I[%s, 416874195632735147, China, %s, %s West Town address 1]",
                                     captureTableThisRound, cityName, cityName),
-                            format(
+                            String.format(
                                     "+I[%s, 416927583791428523, China, %s, %s West Town address 2]",
                                     captureTableThisRound, cityName, cityName),
-                            format(
+                            String.format(
                                     "+I[%s, 417022095255614379, China, %s, %s West Town address 3]",
                                     captureTableThisRound, cityName, cityName)));
             MongoDBTestUtils.waitForSinkSize("sink", fetchedDataList.size());
@@ -469,13 +523,13 @@ class NewlyAddedTableITCase extends MongoDBSourceTestBase {
             String cityName0 = collection0.split("_")[1];
             fetchedDataList.addAll(
                     Arrays.asList(
-                            format(
+                            String.format(
                                     "-U[%s, 416874195632735147, China_%s, %s, %s West Town address 1]",
                                     collection0, round - 1, cityName0, cityName0),
-                            format(
+                            String.format(
                                     "+U[%s, 416874195632735147, China_%s, %s, %s West Town address 1]",
                                     collection0, round, cityName0, cityName0),
-                            format(
+                            String.format(
                                     "+I[%s, %d, China, %s, %s West Town address 4]",
                                     collection0,
                                     417022095255614380L + round,
@@ -484,13 +538,13 @@ class NewlyAddedTableITCase extends MongoDBSourceTestBase {
 
             fetchedDataList.addAll(
                     Arrays.asList(
-                            format(
+                            String.format(
                                     "-U[%s, 416874195632735147, China, %s, %s West Town address 1]",
                                     captureTableThisRound, cityName, cityName),
-                            format(
+                            String.format(
                                     "+U[%s, 416874195632735147, China_%s, %s, %s West Town address 1]",
                                     captureTableThisRound, round, cityName, cityName),
-                            format(
+                            String.format(
                                     "+I[%s, %d, China, %s, %s West Town address 4]",
                                     captureTableThisRound,
                                     417022095255614380L + round,
@@ -529,13 +583,13 @@ class NewlyAddedTableITCase extends MongoDBSourceTestBase {
             String cityName = collection.split("_")[1];
             fetchedDataList.addAll(
                     Arrays.asList(
-                            format(
+                            String.format(
                                     "+I[%s, 416874195632735147, China, %s, %s West Town address 1]",
                                     collection, cityName, cityName),
-                            format(
+                            String.format(
                                     "+I[%s, 416927583791428523, China, %s, %s West Town address 2]",
                                     collection, cityName, cityName),
-                            format(
+                            String.format(
                                     "+I[%s, 417022095255614379, China, %s, %s West Town address 3]",
                                     collection, cityName, cityName)));
         }
@@ -565,7 +619,7 @@ class NewlyAddedTableITCase extends MongoDBSourceTestBase {
             TableResult tableResult =
                     tEnv.executeSql(
                             "insert into sink select collection_name, cid, country, city, detail_address from address");
-            JobClient jobClient = tableResult.getJobClient().get();
+            JobClient jobClient = tableResult.getJobClient().orElseThrow();
 
             // trigger failover after some snapshot data read finished
             if (failoverPhase == MongoDBTestUtils.FailoverPhase.SNAPSHOT) {
@@ -590,9 +644,8 @@ class NewlyAddedTableITCase extends MongoDBSourceTestBase {
         // remaining
         for (int round = 0; round < captureAddressCollections.length - 1; round++) {
             String[] captureTablesThisRound =
-                    Arrays.asList(captureAddressCollections)
-                            .subList(round + 1, captureAddressCollections.length)
-                            .toArray(new String[0]);
+                    Arrays.copyOfRange(
+                            captureAddressCollections, round + 1, captureAddressCollections.length);
 
             StreamExecutionEnvironment env =
                     getStreamExecutionEnvironmentFromSavePoint(finishedSavePointPath, parallelism);
@@ -616,7 +669,7 @@ class NewlyAddedTableITCase extends MongoDBSourceTestBase {
             TableResult tableResult =
                     tEnv.executeSql(
                             "insert into sink select collection_name, cid, country, city, detail_address from address");
-            JobClient jobClient = tableResult.getJobClient().get();
+            JobClient jobClient = tableResult.getJobClient().orElseThrow();
 
             MongoDBTestUtils.waitForSinkSize("sink", fetchedDataList.size());
             MongoDBAssertUtils.assertEqualsInAnyOrder(
@@ -638,16 +691,16 @@ class NewlyAddedTableITCase extends MongoDBSourceTestBase {
                 String cityName = collectionName.split("_")[1];
                 expectedOplogDataThisRound.addAll(
                         Arrays.asList(
-                                format(
+                                String.format(
                                         "-U[%s, 416874195632735147, China%s, %s, %s West Town address 1]",
                                         collectionName,
                                         round == 0 ? "" : "_" + (round - 1),
                                         cityName,
                                         cityName),
-                                format(
+                                String.format(
                                         "+U[%s, 416874195632735147, China_%s, %s, %s West Town address 1]",
                                         collectionName, round, cityName, cityName),
-                                format(
+                                String.format(
                                         "+I[%s, %d, China, %s, %s West Town address 4]",
                                         collectionName,
                                         417022095255614380L + round,
@@ -742,34 +795,34 @@ class NewlyAddedTableITCase extends MongoDBSourceTestBase {
             TableResult tableResult =
                     tEnv.executeSql(
                             "insert into sink select collection_name, cid, country, city, detail_address from address");
-            JobClient jobClient = tableResult.getJobClient().get();
+            JobClient jobClient = tableResult.getJobClient().orElseThrow();
 
             // step 2: assert fetched snapshot data in this round
             String cityName = newlyAddedCollection.split("_")[1];
             List<String> expectedSnapshotDataThisRound =
                     Arrays.asList(
-                            format(
+                            String.format(
                                     "+I[%s, 416874195632735147, China, %s, %s West Town address 1]",
                                     newlyAddedCollection, cityName, cityName),
-                            format(
+                            String.format(
                                     "+I[%s, 416927583791428523, China, %s, %s West Town address 2]",
                                     newlyAddedCollection, cityName, cityName),
-                            format(
+                            String.format(
                                     "+I[%s, 417022095255614379, China, %s, %s West Town address 3]",
                                     newlyAddedCollection, cityName, cityName));
             if (makeOplogBeforeCapture) {
                 expectedSnapshotDataThisRound =
                         Arrays.asList(
-                                format(
+                                String.format(
                                         "+I[%s, 416874195632735147, China, %s, %s West Town address 1]",
                                         newlyAddedCollection, cityName, cityName),
-                                format(
+                                String.format(
                                         "+I[%s, 416927583791428523, China, %s, %s West Town address 2]",
                                         newlyAddedCollection, cityName, cityName),
-                                format(
+                                String.format(
                                         "+I[%s, 417022095255614379, China, %s, %s West Town address 3]",
                                         newlyAddedCollection, cityName, cityName),
-                                format(
+                                String.format(
                                         "+I[%s, 417022095255614381, China, %s, %s West Town address 5]",
                                         newlyAddedCollection, cityName, cityName));
             }
@@ -810,17 +863,17 @@ class NewlyAddedTableITCase extends MongoDBSourceTestBase {
                             .filter(
                                     r ->
                                             !r.contains(
-                                                    format(
+                                                    String.format(
                                                             "%s, 416874195632735147",
                                                             newlyAddedCollection)))
                             .collect(Collectors.toList());
             List<String> expectedOplogUpsertDataThisRound =
                     Arrays.asList(
                             // add the new data with id 416874195632735147
-                            format(
+                            String.format(
                                     "+I[%s, 416874195632735147, CHINA, %s, %s West Town address 1]",
                                     newlyAddedCollection, cityName, cityName),
-                            format(
+                            String.format(
                                     "+I[%s, 417022095255614380, China, %s, %s West Town address 4]",
                                     newlyAddedCollection, cityName, cityName));
 
@@ -928,7 +981,9 @@ class NewlyAddedTableITCase extends MongoDBSourceTestBase {
         // retry 600 times, it takes 100 milliseconds per time, at most retry 1 minute
         while (retryTimes < 600) {
             try {
-                return jobClient.triggerSavepoint(savepointDirectory).get();
+                return jobClient
+                        .triggerSavepoint(savepointDirectory, SavepointFormatType.DEFAULT)
+                        .get();
             } catch (Exception e) {
                 Optional<CheckpointException> exception =
                         ExceptionUtils.findThrowable(e, CheckpointException.class);
@@ -945,18 +1000,23 @@ class NewlyAddedTableITCase extends MongoDBSourceTestBase {
     }
 
     private StreamExecutionEnvironment getStreamExecutionEnvironmentFromSavePoint(
-            String finishedSavePointPath, int parallelism) throws Exception {
+            String finishedSavePointPath, int parallelism) {
         // Close sink upsert materialize to show more clear test output.
         Configuration tableConfig = new Configuration();
         tableConfig.setString("table.exec.sink.upsert-materialize", "none");
         if (finishedSavePointPath != null) {
-            tableConfig.setString(SavepointConfigOptions.SAVEPOINT_PATH, finishedSavePointPath);
+            tableConfig.set(StateRecoveryOptions.SAVEPOINT_PATH, finishedSavePointPath);
         }
+        tableConfig.set(
+                RestartStrategyOptions.RESTART_STRATEGY,
+                RestartStrategyOptions.RestartStrategyType.FIXED_DELAY.getMainValue());
+        tableConfig.set(RestartStrategyOptions.RESTART_STRATEGY_EXPONENTIAL_DELAY_ATTEMPTS, 3);
+        tableConfig.set(
+                RestartStrategyOptions.RESTART_STRATEGY_FIXED_DELAY_DELAY, Duration.ofSeconds(100));
         StreamExecutionEnvironment env =
                 StreamExecutionEnvironment.getExecutionEnvironment(tableConfig);
         env.setParallelism(parallelism);
         env.enableCheckpointing(200L);
-        env.setRestartStrategy(RestartStrategies.fixedDelayRestart(3, 100L));
         return env;
     }
 
@@ -986,8 +1046,8 @@ class NewlyAddedTableITCase extends MongoDBSourceTestBase {
                         + " %s"
                         + ")",
                 MONGO_CONTAINER.getHostAndPort(),
-                FLINK_USER,
-                FLINK_USER_PASSWORD,
+                MongoDBContainer.FLINK_USER,
+                MongoDBContainer.FLINK_USER_PASSWORD,
                 customerDatabase,
                 getCollectionNameRegex(customerDatabase, captureTableNames),
                 otherOptions.isEmpty()
@@ -1021,7 +1081,7 @@ class NewlyAddedTableITCase extends MongoDBSourceTestBase {
     }
 
     private String getCollectionNameRegex(String database, String[] captureCustomerCollections) {
-        checkState(captureCustomerCollections.length > 0);
+        Preconditions.checkState(captureCustomerCollections.length > 0);
         if (captureCustomerCollections.length == 1) {
             return captureCustomerCollections[0];
         } else {

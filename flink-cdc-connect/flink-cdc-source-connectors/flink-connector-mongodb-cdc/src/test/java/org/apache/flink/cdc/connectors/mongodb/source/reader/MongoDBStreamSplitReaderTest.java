@@ -23,6 +23,7 @@ import org.apache.flink.cdc.connectors.base.source.meta.split.StreamSplit;
 import org.apache.flink.cdc.connectors.base.source.reader.IncrementalSourceReaderContext;
 import org.apache.flink.cdc.connectors.base.source.reader.IncrementalSourceSplitReader;
 import org.apache.flink.cdc.connectors.base.source.utils.hooks.SnapshotPhaseHooks;
+import org.apache.flink.cdc.connectors.mongodb.internal.MongoDBEnvelope;
 import org.apache.flink.cdc.connectors.mongodb.source.MongoDBSourceTestBase;
 import org.apache.flink.cdc.connectors.mongodb.source.config.MongoDBSourceConfig;
 import org.apache.flink.cdc.connectors.mongodb.source.config.MongoDBSourceConfigFactory;
@@ -30,9 +31,13 @@ import org.apache.flink.cdc.connectors.mongodb.source.dialect.MongoDBDialect;
 import org.apache.flink.cdc.connectors.mongodb.source.offset.ChangeStreamDescriptor;
 import org.apache.flink.cdc.connectors.mongodb.source.offset.ChangeStreamOffset;
 import org.apache.flink.cdc.connectors.mongodb.source.offset.ChangeStreamOffsetFactory;
+import org.apache.flink.cdc.connectors.mongodb.source.utils.CollectionDiscoveryUtils;
+import org.apache.flink.cdc.connectors.mongodb.source.utils.MongoUtils;
+import org.apache.flink.cdc.connectors.mongodb.utils.MongoDBContainer;
 import org.apache.flink.connector.base.source.reader.splitreader.SplitsAddition;
 import org.apache.flink.connector.testutils.source.reader.TestingReaderContext;
 
+import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.model.changestream.OperationType;
 import org.apache.kafka.connect.data.Struct;
@@ -40,32 +45,54 @@ import org.apache.kafka.connect.source.SourceRecord;
 import org.assertj.core.api.Assertions;
 import org.bson.BsonDocument;
 import org.bson.Document;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.testcontainers.containers.output.Slf4jLogConsumer;
+import org.testcontainers.lifecycle.Startables;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
-
-import static java.util.Collections.singletonList;
-import static org.apache.flink.cdc.connectors.mongodb.internal.MongoDBEnvelope.FULL_DOCUMENT_FIELD;
-import static org.apache.flink.cdc.connectors.mongodb.internal.MongoDBEnvelope.OPERATION_TYPE_FIELD;
-import static org.apache.flink.cdc.connectors.mongodb.source.utils.CollectionDiscoveryUtils.collectionNames;
-import static org.apache.flink.cdc.connectors.mongodb.source.utils.CollectionDiscoveryUtils.collectionsFilter;
-import static org.apache.flink.cdc.connectors.mongodb.source.utils.CollectionDiscoveryUtils.databaseFilter;
-import static org.apache.flink.cdc.connectors.mongodb.source.utils.CollectionDiscoveryUtils.databaseNames;
-import static org.apache.flink.cdc.connectors.mongodb.source.utils.MongoUtils.getChangeStreamDescriptor;
-import static org.apache.flink.cdc.connectors.mongodb.source.utils.MongoUtils.getLatestResumeToken;
-import static org.apache.flink.cdc.connectors.mongodb.utils.MongoDBContainer.FLINK_USER;
-import static org.apache.flink.cdc.connectors.mongodb.utils.MongoDBContainer.FLINK_USER_PASSWORD;
+import java.util.stream.Stream;
 
 /** MongoDB stream split reader test case. */
 @Timeout(value = 300, unit = TimeUnit.SECONDS)
 class MongoDBStreamSplitReaderTest extends MongoDBSourceTestBase {
+
+    private static final Logger LOG = LoggerFactory.getLogger(MongoDBStreamSplitReaderTest.class);
+
+    protected MongoClient mongodbClient;
+
+    private static final MongoDBContainer MONGO_CONTAINER =
+            new MongoDBContainer("mongo:" + getMongoVersion())
+                    .withSharding()
+                    .withLogConsumer(new Slf4jLogConsumer(LOG));
+
+    @BeforeAll
+    static void startContainers() {
+        LOG.info("Starting containers...");
+        Startables.deepStart(Stream.of(MONGO_CONTAINER)).join();
+        LOG.info("Containers are started.");
+    }
+
+    @AfterAll
+    static void stopContainers() {
+        LOG.info("Stopping containers...");
+        if (MONGO_CONTAINER != null) {
+            MONGO_CONTAINER.stop();
+        }
+        LOG.info("Containers are stopped.");
+    }
 
     private static final String STREAM_SPLIT_ID = "stream-split";
 
@@ -79,12 +106,11 @@ class MongoDBStreamSplitReaderTest extends MongoDBSourceTestBase {
 
     private ChangeStreamOffsetFactory changeStreamOffsetFactory;
 
-    private ChangeStreamDescriptor changeStreamDescriptor;
-
     private BsonDocument startupResumeToken;
 
     @BeforeEach
     public void before() {
+        mongodbClient = this.createClients(MONGO_CONTAINER);
         database = MONGO_CONTAINER.executeCommandFileInSeparateDatabase("chunk_test");
 
         MongoDBSourceConfigFactory configFactory =
@@ -92,8 +118,8 @@ class MongoDBStreamSplitReaderTest extends MongoDBSourceTestBase {
                         .hosts(MONGO_CONTAINER.getHostAndPort())
                         .databaseList(database)
                         .collectionList(database + ".shopping_cart")
-                        .username(FLINK_USER)
-                        .password(FLINK_USER_PASSWORD)
+                        .username(MongoDBContainer.FLINK_USER)
+                        .password(MongoDBContainer.FLINK_USER_PASSWORD)
                         .splitSizeMB(1)
                         .pollAwaitTimeMillis(500);
 
@@ -104,17 +130,29 @@ class MongoDBStreamSplitReaderTest extends MongoDBSourceTestBase {
         changeStreamOffsetFactory = new ChangeStreamOffsetFactory();
 
         List<String> discoveredDatabases =
-                databaseNames(mongodbClient, databaseFilter(sourceConfig.getDatabaseList()));
+                CollectionDiscoveryUtils.databaseNames(
+                        mongodbClient,
+                        CollectionDiscoveryUtils.databaseFilter(sourceConfig.getDatabaseList()));
         List<String> discoveredCollections =
-                collectionNames(
+                CollectionDiscoveryUtils.collectionNames(
                         mongodbClient,
                         discoveredDatabases,
-                        collectionsFilter(sourceConfig.getCollectionList()));
+                        CollectionDiscoveryUtils.collectionsFilter(
+                                sourceConfig.getCollectionList()));
 
-        changeStreamDescriptor =
-                getChangeStreamDescriptor(sourceConfig, discoveredDatabases, discoveredCollections);
+        ChangeStreamDescriptor changeStreamDescriptor =
+                MongoUtils.getChangeStreamDescriptor(
+                        sourceConfig, discoveredDatabases, discoveredCollections);
 
-        startupResumeToken = getLatestResumeToken(mongodbClient, changeStreamDescriptor);
+        startupResumeToken = MongoUtils.getLatestResumeToken(mongodbClient, changeStreamDescriptor);
+    }
+
+    @AfterEach
+    public void testDestroy() {
+        if (mongodbClient != null) {
+            mongodbClient.close();
+            mongodbClient = null;
+        }
     }
 
     @Test
@@ -141,7 +179,8 @@ class MongoDBStreamSplitReaderTest extends MongoDBSourceTestBase {
                             0);
 
             Assertions.assertThat(streamSplitReader.canAssignNextSplit()).isTrue();
-            streamSplitReader.handleSplitsChanges(new SplitsAddition<>(singletonList(streamSplit)));
+            streamSplitReader.handleSplitsChanges(
+                    new SplitsAddition<>(Collections.singletonList(streamSplit)));
 
             MongoCollection<Document> collection =
                     mongodbClient.getDatabase(database).getCollection("shopping_cart");
@@ -166,11 +205,13 @@ class MongoDBStreamSplitReaderTest extends MongoDBSourceTestBase {
                         while (iterator.hasNext()) {
                             Struct value = (Struct) iterator.next().value();
                             OperationType operationType =
-                                    OperationType.fromString(value.getString(OPERATION_TYPE_FIELD));
+                                    OperationType.fromString(
+                                            value.getString(MongoDBEnvelope.OPERATION_TYPE_FIELD));
 
                             Assertions.assertThat(operationType).isEqualTo(OperationType.INSERT);
                             BsonDocument fullDocument =
-                                    BsonDocument.parse(value.getString(FULL_DOCUMENT_FIELD));
+                                    BsonDocument.parse(
+                                            value.getString(MongoDBEnvelope.FULL_DOCUMENT_FIELD));
                             long productNo = fullDocument.getInt64("product_no").longValue();
                             String productKind = fullDocument.getString("product_kind").getValue();
                             String userId = fullDocument.getString("user_id").getValue();

@@ -17,7 +17,6 @@
 
 package org.apache.flink.cdc.connectors.base.source.reader;
 
-import org.apache.flink.cdc.common.annotation.Experimental;
 import org.apache.flink.cdc.connectors.base.config.SourceConfig;
 import org.apache.flink.cdc.connectors.base.dialect.DataSourceDialect;
 import org.apache.flink.cdc.connectors.base.source.meta.offset.Offset;
@@ -39,7 +38,6 @@ import java.util.function.Supplier;
 /**
  * Record the LSN of checkpoint {@link StreamSplit}, which can be used to submit to the CDC source.
  */
-@Experimental
 public class IncrementalSourceReaderWithCommit<T, C extends SourceConfig>
         extends IncrementalSourceReader<T, C> {
     private static final Logger LOG =

@@ -17,7 +17,6 @@
 
 package org.apache.flink.cdc.connectors.base.source.assigner.splitter;
 
-import org.apache.flink.cdc.common.annotation.Experimental;
 import org.apache.flink.cdc.connectors.base.source.assigner.state.ChunkSplitterState;
 import org.apache.flink.cdc.connectors.base.source.meta.split.SnapshotSplit;
 
@@ -26,7 +25,6 @@ import io.debezium.relational.TableId;
 import java.util.Collection;
 
 /** The splitter used to split collection into a set of chunks. */
-@Experimental
 public interface ChunkSplitter {
 
     /**

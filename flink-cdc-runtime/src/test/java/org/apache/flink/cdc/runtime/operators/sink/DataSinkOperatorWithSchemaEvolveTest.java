@@ -46,8 +46,8 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 /**
- * Unit tests for the DataSinkOperator ({@link DataSinkWriterOperator}/{@link
- * DataSinkFunctionOperator} handling schema evolution events.
+ * Unit tests for the DataSinkOperator ({@link DataSinkWriterOperator} handling schema evolution
+ * events.
  */
 @Disabled
 class DataSinkOperatorWithSchemaEvolveTest {

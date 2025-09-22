@@ -18,7 +18,6 @@
 package org.apache.flink.cdc.connectors.mysql.source;
 
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
-import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.cdc.common.configuration.Configuration;
 import org.apache.flink.cdc.common.data.DecimalData;
 import org.apache.flink.cdc.common.data.binary.BinaryStringData;
@@ -48,15 +47,18 @@ import org.apache.flink.cdc.connectors.mysql.factory.MySqlDataSourceFactory;
 import org.apache.flink.cdc.connectors.mysql.source.config.MySqlSourceConfigFactory;
 import org.apache.flink.cdc.connectors.mysql.source.utils.StatementUtils;
 import org.apache.flink.cdc.connectors.mysql.table.StartupOptions;
+import org.apache.flink.cdc.connectors.mysql.testutils.MySqSourceTestUtils;
 import org.apache.flink.cdc.connectors.mysql.testutils.MySqlContainer;
 import org.apache.flink.cdc.connectors.mysql.testutils.MySqlVersion;
 import org.apache.flink.cdc.connectors.mysql.testutils.UniqueDatabase;
 import org.apache.flink.cdc.runtime.typeutils.BinaryRecordDataGenerator;
 import org.apache.flink.cdc.runtime.typeutils.EventTypeInfo;
+import org.apache.flink.configuration.RestartStrategyOptions;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.planner.factories.TestValuesTableFactory;
 import org.apache.flink.util.CloseableIterator;
 
+import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -80,20 +82,6 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import static org.apache.flink.cdc.connectors.mysql.source.MySqlDataSourceOptions.HOSTNAME;
-import static org.apache.flink.cdc.connectors.mysql.source.MySqlDataSourceOptions.INCLUDE_COMMENTS_ENABLED;
-import static org.apache.flink.cdc.connectors.mysql.source.MySqlDataSourceOptions.PASSWORD;
-import static org.apache.flink.cdc.connectors.mysql.source.MySqlDataSourceOptions.PORT;
-import static org.apache.flink.cdc.connectors.mysql.source.MySqlDataSourceOptions.SCAN_BINLOG_NEWLY_ADDED_TABLE_ENABLED;
-import static org.apache.flink.cdc.connectors.mysql.source.MySqlDataSourceOptions.SCHEMA_CHANGE_ENABLED;
-import static org.apache.flink.cdc.connectors.mysql.source.MySqlDataSourceOptions.SERVER_TIME_ZONE;
-import static org.apache.flink.cdc.connectors.mysql.source.MySqlDataSourceOptions.TABLES;
-import static org.apache.flink.cdc.connectors.mysql.source.MySqlDataSourceOptions.USERNAME;
-import static org.apache.flink.cdc.connectors.mysql.testutils.MySqSourceTestUtils.TEST_PASSWORD;
-import static org.apache.flink.cdc.connectors.mysql.testutils.MySqSourceTestUtils.TEST_USER;
-import static org.apache.flink.cdc.connectors.mysql.testutils.MySqSourceTestUtils.fetchResults;
-import static org.assertj.core.api.Assertions.assertThat;
-
 /** IT tests for {@link MySqlDataSource}. */
 class MySqlPipelineITCase extends MySqlSourceTestBase {
 
@@ -101,10 +89,22 @@ class MySqlPipelineITCase extends MySqlSourceTestBase {
             createMySqlContainer(MySqlVersion.V8_0);
 
     private final UniqueDatabase inventoryDatabase =
-            new UniqueDatabase(MYSQL8_CONTAINER, "inventory", TEST_USER, TEST_PASSWORD);
+            new UniqueDatabase(
+                    MYSQL8_CONTAINER,
+                    "inventory",
+                    MySqSourceTestUtils.TEST_USER,
+                    MySqSourceTestUtils.TEST_PASSWORD);
 
-    private final StreamExecutionEnvironment env =
-            StreamExecutionEnvironment.getExecutionEnvironment();
+    private final StreamExecutionEnvironment env;
+
+    {
+        final org.apache.flink.configuration.Configuration conf =
+                new org.apache.flink.configuration.Configuration();
+        conf.set(
+                RestartStrategyOptions.RESTART_STRATEGY,
+                RestartStrategyOptions.RestartStrategyType.NO_RESTART_STRATEGY.getMainValue());
+        env = StreamExecutionEnvironment.getExecutionEnvironment(conf);
+    }
 
     @BeforeAll
     public static void startContainers() {
@@ -125,7 +125,6 @@ class MySqlPipelineITCase extends MySqlSourceTestBase {
         TestValuesTableFactory.clearAllData();
         env.setParallelism(4);
         env.enableCheckpointing(2000);
-        env.setRestartStrategy(RestartStrategies.noRestart());
     }
 
     @Test
@@ -135,14 +134,15 @@ class MySqlPipelineITCase extends MySqlSourceTestBase {
                 new MySqlSourceConfigFactory()
                         .hostname(MYSQL8_CONTAINER.getHost())
                         .port(MYSQL8_CONTAINER.getDatabasePort())
-                        .username(TEST_USER)
-                        .password(TEST_PASSWORD)
+                        .username(MySqSourceTestUtils.TEST_USER)
+                        .password(MySqSourceTestUtils.TEST_PASSWORD)
                         .databaseList(inventoryDatabase.getDatabaseName())
                         .tableList(inventoryDatabase.getDatabaseName() + "\\.products")
                         .startupOptions(StartupOptions.initial())
                         .serverId(getServerId(env.getParallelism()))
                         .serverTimeZone("UTC")
-                        .includeSchemaChanges(SCHEMA_CHANGE_ENABLED.defaultValue());
+                        .includeSchemaChanges(
+                                MySqlDataSourceOptions.SCHEMA_CHANGE_ENABLED.defaultValue());
 
         FlinkSourceProvider sourceProvider =
                 (FlinkSourceProvider) new MySqlDataSource(configFactory).getEventSourceProvider();
@@ -253,9 +253,9 @@ class MySqlPipelineITCase extends MySqlSourceTestBase {
         List<Event> actual =
                 fetchResultsExcept(
                         events, expectedSnapshot.size() + expectedBinlog.size(), createTableEvent);
-        assertThat(actual.subList(0, expectedSnapshot.size()))
+        Assertions.assertThat(actual.subList(0, expectedSnapshot.size()))
                 .containsExactlyInAnyOrder(expectedSnapshot.toArray(new Event[0]));
-        assertThat(actual.subList(expectedSnapshot.size(), actual.size()))
+        Assertions.assertThat(actual.subList(expectedSnapshot.size(), actual.size()))
                 .isEqualTo(expectedBinlog);
     }
 
@@ -301,14 +301,15 @@ class MySqlPipelineITCase extends MySqlSourceTestBase {
                 new MySqlSourceConfigFactory()
                         .hostname(MYSQL8_CONTAINER.getHost())
                         .port(MYSQL8_CONTAINER.getDatabasePort())
-                        .username(TEST_USER)
-                        .password(TEST_PASSWORD)
+                        .username(MySqSourceTestUtils.TEST_USER)
+                        .password(MySqSourceTestUtils.TEST_PASSWORD)
                         .databaseList(inventoryDatabase.getDatabaseName())
                         .tableList(inventoryDatabase.getDatabaseName() + "\\.sql.*")
                         .startupOptions(StartupOptions.initial())
                         .serverId(getServerId(env.getParallelism()))
                         .serverTimeZone("UTC")
-                        .includeSchemaChanges(SCHEMA_CHANGE_ENABLED.defaultValue());
+                        .includeSchemaChanges(
+                                MySqlDataSourceOptions.SCHEMA_CHANGE_ENABLED.defaultValue());
 
         FlinkSourceProvider sourceProvider =
                 (FlinkSourceProvider) new MySqlDataSource(configFactory).getEventSourceProvider();
@@ -396,9 +397,9 @@ class MySqlPipelineITCase extends MySqlSourceTestBase {
         List<Event> actual =
                 fetchResultsExcept(
                         events, expectedSnapshot.size() + expectedBinlog.size(), createTableEvent);
-        assertThat(actual.subList(0, expectedSnapshot.size()))
+        Assertions.assertThat(actual.subList(0, expectedSnapshot.size()))
                 .containsExactlyInAnyOrder(expectedSnapshot.toArray(new Event[0]));
-        assertThat(actual.subList(expectedSnapshot.size(), actual.size()))
+        Assertions.assertThat(actual.subList(expectedSnapshot.size(), actual.size()))
                 .isEqualTo(expectedBinlog);
     }
 
@@ -409,14 +410,15 @@ class MySqlPipelineITCase extends MySqlSourceTestBase {
                 new MySqlSourceConfigFactory()
                         .hostname(MYSQL8_CONTAINER.getHost())
                         .port(MYSQL8_CONTAINER.getDatabasePort())
-                        .username(TEST_USER)
-                        .password(TEST_PASSWORD)
+                        .username(MySqSourceTestUtils.TEST_USER)
+                        .password(MySqSourceTestUtils.TEST_PASSWORD)
                         .databaseList(inventoryDatabase.getDatabaseName())
                         .tableList(inventoryDatabase.getDatabaseName() + "\\.products")
                         .startupOptions(StartupOptions.latest())
                         .serverId(getServerId(env.getParallelism()))
                         .serverTimeZone("UTC")
-                        .includeSchemaChanges(SCHEMA_CHANGE_ENABLED.defaultValue());
+                        .includeSchemaChanges(
+                                MySqlDataSourceOptions.SCHEMA_CHANGE_ENABLED.defaultValue());
 
         FlinkSourceProvider sourceProvider =
                 (FlinkSourceProvider) new MySqlDataSource(configFactory).getEventSourceProvider();
@@ -522,7 +524,7 @@ class MySqlPipelineITCase extends MySqlSourceTestBase {
 
         Event createTableEvent = getProductsCreateTableEvent(tableId);
         List<Event> actual = fetchResultsExcept(events, expectedBinlog.size(), createTableEvent);
-        assertThat(actual).isEqualTo(expectedBinlog);
+        Assertions.assertThat(actual).isEqualTo(expectedBinlog);
     }
 
     @ParameterizedTest(name = "batchEmit: {0}")
@@ -534,8 +536,8 @@ class MySqlPipelineITCase extends MySqlSourceTestBase {
                 new MySqlSourceConfigFactory()
                         .hostname(MYSQL8_CONTAINER.getHost())
                         .port(MYSQL8_CONTAINER.getDatabasePort())
-                        .username(TEST_USER)
-                        .password(TEST_PASSWORD)
+                        .username(MySqSourceTestUtils.TEST_USER)
+                        .password(MySqSourceTestUtils.TEST_PASSWORD)
                         .databaseList(databaseName)
                         .tableList(databaseName + ".*")
                         .excludeTableList(
@@ -545,7 +547,8 @@ class MySqlPipelineITCase extends MySqlSourceTestBase {
                         .startupOptions(StartupOptions.initial())
                         .serverId(getServerId(env.getParallelism()))
                         .serverTimeZone("UTC")
-                        .includeSchemaChanges(SCHEMA_CHANGE_ENABLED.defaultValue());
+                        .includeSchemaChanges(
+                                MySqlDataSourceOptions.SCHEMA_CHANGE_ENABLED.defaultValue());
 
         FlinkSourceProvider sourceProvider =
                 (FlinkSourceProvider) new MySqlDataSource(configFactory).getEventSourceProvider();
@@ -663,9 +666,9 @@ class MySqlPipelineITCase extends MySqlSourceTestBase {
         List<Event> actual =
                 fetchResultsExcept(
                         events, expectedSnapshot.size() + expectedBinlog.size(), createTableEvent);
-        assertThat(actual.subList(0, expectedSnapshot.size()))
+        Assertions.assertThat(actual.subList(0, expectedSnapshot.size()))
                 .containsExactlyInAnyOrder(expectedSnapshot.toArray(new Event[0]));
-        assertThat(actual.subList(expectedSnapshot.size(), actual.size()))
+        Assertions.assertThat(actual.subList(expectedSnapshot.size(), actual.size()))
                 .isEqualTo(expectedBinlog);
     }
 
@@ -682,7 +685,7 @@ class MySqlPipelineITCase extends MySqlSourceTestBase {
             }
         }
         // Also ensure we've received at least one or many side events.
-        assertThat(sideResults).isNotEmpty();
+        Assertions.assertThat(sideResults).isNotEmpty();
         return result;
     }
 
@@ -702,8 +705,8 @@ class MySqlPipelineITCase extends MySqlSourceTestBase {
         Configuration sourceConfiguration = new Configuration();
         sourceConfiguration.set(MySqlDataSourceOptions.HOSTNAME, MYSQL8_CONTAINER.getHost());
         sourceConfiguration.set(MySqlDataSourceOptions.PORT, MYSQL8_CONTAINER.getDatabasePort());
-        sourceConfiguration.set(MySqlDataSourceOptions.USERNAME, TEST_USER);
-        sourceConfiguration.set(MySqlDataSourceOptions.PASSWORD, TEST_PASSWORD);
+        sourceConfiguration.set(MySqlDataSourceOptions.USERNAME, MySqSourceTestUtils.TEST_USER);
+        sourceConfiguration.set(MySqlDataSourceOptions.PASSWORD, MySqSourceTestUtils.TEST_PASSWORD);
         sourceConfiguration.set(
                 MySqlDataSourceOptions.TABLES, inventoryDatabase.getDatabaseName() + ".products");
         sourceConfiguration.set(
@@ -841,19 +844,21 @@ class MySqlPipelineITCase extends MySqlSourceTestBase {
         List<Event> actualSnapshotEvents = actual.subList(0, snapshotRecordsCount);
         List<Event> actualBinlogEvents = actual.subList(snapshotRecordsCount, actual.size());
 
-        assertThat(actualSnapshotEvents).containsExactlyInAnyOrderElementsOf(expectedSnapshot);
-        assertThat(actualBinlogEvents).hasSize(binlogRecordsCount);
+        Assertions.assertThat(actualSnapshotEvents)
+                .containsExactlyInAnyOrderElementsOf(expectedSnapshot);
+        Assertions.assertThat(actualBinlogEvents).hasSize(binlogRecordsCount);
 
         for (int i = 0; i < binlogRecordsCount; i++) {
             if (expectedBinlog.get(i) instanceof SchemaChangeEvent) {
-                assertThat(actualBinlogEvents.get(i)).isEqualTo(expectedBinlog.get(i));
+                Assertions.assertThat(actualBinlogEvents.get(i)).isEqualTo(expectedBinlog.get(i));
             } else {
                 DataChangeEvent expectedEvent = (DataChangeEvent) expectedBinlog.get(i);
                 DataChangeEvent actualEvent = (DataChangeEvent) actualBinlogEvents.get(i);
-                assertThat(actualEvent.op()).isEqualTo(expectedEvent.op());
-                assertThat(actualEvent.before()).isEqualTo(expectedEvent.before());
-                assertThat(actualEvent.after()).isEqualTo(expectedEvent.after());
-                assertThat(actualEvent.meta().get("op_ts")).isGreaterThanOrEqualTo(startTime);
+                Assertions.assertThat(actualEvent.op()).isEqualTo(expectedEvent.op());
+                Assertions.assertThat(actualEvent.before()).isEqualTo(expectedEvent.before());
+                Assertions.assertThat(actualEvent.after()).isEqualTo(expectedEvent.after());
+                Assertions.assertThat(actualEvent.meta().get("op_ts"))
+                        .isGreaterThanOrEqualTo(startTime);
             }
         }
     }
@@ -866,15 +871,16 @@ class MySqlPipelineITCase extends MySqlSourceTestBase {
                 new MySqlSourceConfigFactory()
                         .hostname(MYSQL8_CONTAINER.getHost())
                         .port(MYSQL8_CONTAINER.getDatabasePort())
-                        .username(TEST_USER)
-                        .password(TEST_PASSWORD)
+                        .username(MySqSourceTestUtils.TEST_USER)
+                        .password(MySqSourceTestUtils.TEST_PASSWORD)
                         .databaseList(inventoryDatabase.getDatabaseName())
                         .tableList(inventoryDatabase.getDatabaseName() + "\\.products")
                         .startupOptions(StartupOptions.latest())
                         .serverId(getServerId(env.getParallelism()))
                         .serverTimeZone("UTC")
                         .treatTinyInt1AsBoolean(tinyInt1isBit)
-                        .includeSchemaChanges(SCHEMA_CHANGE_ENABLED.defaultValue());
+                        .includeSchemaChanges(
+                                MySqlDataSourceOptions.SCHEMA_CHANGE_ENABLED.defaultValue());
 
         FlinkSourceProvider sourceProvider =
                 (FlinkSourceProvider) new MySqlDataSource(configFactory).getEventSourceProvider();
@@ -1005,8 +1011,8 @@ class MySqlPipelineITCase extends MySqlSourceTestBase {
                             "DROP TABLE `%s`.`products`;", inventoryDatabase.getDatabaseName()));
             expected.add(new DropTableEvent(tableId));
         }
-        List<Event> actual = fetchResults(events, expected.size());
-        assertThat(actual).isEqualTo(expected);
+        List<Event> actual = MySqSourceTestUtils.fetchResults(events, expected.size());
+        Assertions.assertThat(actual).isEqualTo(expected);
     }
 
     @Test
@@ -1027,15 +1033,16 @@ class MySqlPipelineITCase extends MySqlSourceTestBase {
                 new MySqlSourceConfigFactory()
                         .hostname(MYSQL8_CONTAINER.getHost())
                         .port(MYSQL8_CONTAINER.getDatabasePort())
-                        .username(TEST_USER)
-                        .password(TEST_PASSWORD)
+                        .username(MySqSourceTestUtils.TEST_USER)
+                        .password(MySqSourceTestUtils.TEST_PASSWORD)
                         .databaseList(inventoryDatabase.getDatabaseName())
                         .tableList(inventoryDatabase.getDatabaseName() + ".*")
                         .startupOptions(StartupOptions.latest())
                         .serverId(getServerId(env.getParallelism()))
                         .serverTimeZone("UTC")
                         .treatTinyInt1AsBoolean(tinyInt1isBit)
-                        .includeSchemaChanges(SCHEMA_CHANGE_ENABLED.defaultValue());
+                        .includeSchemaChanges(
+                                MySqlDataSourceOptions.SCHEMA_CHANGE_ENABLED.defaultValue());
 
         FlinkSourceProvider sourceProvider =
                 (FlinkSourceProvider) new MySqlDataSource(configFactory).getEventSourceProvider();
@@ -1495,7 +1502,7 @@ class MySqlPipelineITCase extends MySqlSourceTestBase {
                                                 new BinaryStringData("eu")
                                             })));
         }
-        List<Event> actual = fetchResults(events, expected.size());
+        List<Event> actual = MySqSourceTestUtils.fetchResults(events, expected.size());
         assertEqualsInAnyOrder(
                 expected.stream().map(Object::toString).collect(Collectors.toList()),
                 actual.stream().map(Object::toString).collect(Collectors.toList()));
@@ -1539,14 +1546,15 @@ class MySqlPipelineITCase extends MySqlSourceTestBase {
                 new MySqlSourceConfigFactory()
                         .hostname(MYSQL8_CONTAINER.getHost())
                         .port(MYSQL8_CONTAINER.getDatabasePort())
-                        .username(TEST_USER)
-                        .password(TEST_PASSWORD)
+                        .username(MySqSourceTestUtils.TEST_USER)
+                        .password(MySqSourceTestUtils.TEST_PASSWORD)
                         .databaseList(inventoryDatabase.getDatabaseName())
                         .tableList(inventoryDatabase.getDatabaseName() + ".*")
                         .startupOptions(StartupOptions.specificOffset(logFileName, logPosition))
                         .serverId(getServerId(env.getParallelism()))
                         .serverTimeZone("UTC")
-                        .includeSchemaChanges(SCHEMA_CHANGE_ENABLED.defaultValue());
+                        .includeSchemaChanges(
+                                MySqlDataSourceOptions.SCHEMA_CHANGE_ENABLED.defaultValue());
 
         FlinkSourceProvider sourceProvider =
                 (FlinkSourceProvider) new MySqlDataSource(configFactory).getEventSourceProvider();
@@ -1565,7 +1573,7 @@ class MySqlPipelineITCase extends MySqlSourceTestBase {
                 new DropTableEvent(
                         TableId.tableId(inventoryDatabase.getDatabaseName(), "live_fast")));
 
-        List<Event> actual = fetchResults(events, expectedEvents.size());
+        List<Event> actual = MySqSourceTestUtils.fetchResults(events, expectedEvents.size());
         assertEqualsInAnyOrder(
                 expectedEvents.stream().map(Object::toString).collect(Collectors.toList()),
                 actual.stream().map(Object::toString).collect(Collectors.toList()));
@@ -1590,13 +1598,17 @@ class MySqlPipelineITCase extends MySqlSourceTestBase {
         executeSql(inventoryDatabase, createTableSql);
 
         Map<String, String> options = new HashMap<>();
-        options.put(HOSTNAME.key(), MYSQL8_CONTAINER.getHost());
-        options.put(PORT.key(), String.valueOf(MYSQL8_CONTAINER.getDatabasePort()));
-        options.put(USERNAME.key(), TEST_USER);
-        options.put(PASSWORD.key(), TEST_PASSWORD);
-        options.put(SERVER_TIME_ZONE.key(), "UTC");
-        options.put(INCLUDE_COMMENTS_ENABLED.key(), "true");
-        options.put(TABLES.key(), inventoryDatabase.getDatabaseName() + ".products_with_comments");
+        options.put(MySqlDataSourceOptions.HOSTNAME.key(), MYSQL8_CONTAINER.getHost());
+        options.put(
+                MySqlDataSourceOptions.PORT.key(),
+                String.valueOf(MYSQL8_CONTAINER.getDatabasePort()));
+        options.put(MySqlDataSourceOptions.USERNAME.key(), MySqSourceTestUtils.TEST_USER);
+        options.put(MySqlDataSourceOptions.PASSWORD.key(), MySqSourceTestUtils.TEST_PASSWORD);
+        options.put(MySqlDataSourceOptions.SERVER_TIME_ZONE.key(), "UTC");
+        options.put(MySqlDataSourceOptions.INCLUDE_COMMENTS_ENABLED.key(), "true");
+        options.put(
+                MySqlDataSourceOptions.TABLES.key(),
+                inventoryDatabase.getDatabaseName() + ".products_with_comments");
         Factory.Context context =
                 new FactoryHelper.DefaultContext(
                         Configuration.fromMap(options), null, this.getClass().getClassLoader());
@@ -1623,7 +1635,7 @@ class MySqlPipelineITCase extends MySqlSourceTestBase {
         executeSql(inventoryDatabase, addColumnSql);
 
         List<Event> expectedEvents = getEventsWithComments(tableId);
-        List<Event> actual = fetchResults(events, expectedEvents.size());
+        List<Event> actual = MySqSourceTestUtils.fetchResults(events, expectedEvents.size());
         assertEqualsInAnyOrder(
                 expectedEvents.stream().map(Object::toString).collect(Collectors.toList()),
                 actual.stream().map(Object::toString).collect(Collectors.toList()));
@@ -1638,14 +1650,18 @@ class MySqlPipelineITCase extends MySqlSourceTestBase {
                 TableId.tableId(inventoryDatabase.getDatabaseName(), "products_with_comments2");
 
         Map<String, String> options = new HashMap<>();
-        options.put(HOSTNAME.key(), MYSQL8_CONTAINER.getHost());
-        options.put(PORT.key(), String.valueOf(MYSQL8_CONTAINER.getDatabasePort()));
-        options.put(USERNAME.key(), TEST_USER);
-        options.put(PASSWORD.key(), TEST_PASSWORD);
-        options.put(SERVER_TIME_ZONE.key(), "UTC");
-        options.put(INCLUDE_COMMENTS_ENABLED.key(), "true");
-        options.put(SCAN_BINLOG_NEWLY_ADDED_TABLE_ENABLED.key(), "true");
-        options.put(TABLES.key(), inventoryDatabase.getDatabaseName() + ".products\\.*");
+        options.put(MySqlDataSourceOptions.HOSTNAME.key(), MYSQL8_CONTAINER.getHost());
+        options.put(
+                MySqlDataSourceOptions.PORT.key(),
+                String.valueOf(MYSQL8_CONTAINER.getDatabasePort()));
+        options.put(MySqlDataSourceOptions.USERNAME.key(), MySqSourceTestUtils.TEST_USER);
+        options.put(MySqlDataSourceOptions.PASSWORD.key(), MySqSourceTestUtils.TEST_PASSWORD);
+        options.put(MySqlDataSourceOptions.SERVER_TIME_ZONE.key(), "UTC");
+        options.put(MySqlDataSourceOptions.INCLUDE_COMMENTS_ENABLED.key(), "true");
+        options.put(MySqlDataSourceOptions.SCAN_BINLOG_NEWLY_ADDED_TABLE_ENABLED.key(), "true");
+        options.put(
+                MySqlDataSourceOptions.TABLES.key(),
+                inventoryDatabase.getDatabaseName() + ".products\\.*");
         Factory.Context context =
                 new FactoryHelper.DefaultContext(
                         Configuration.fromMap(options), null, this.getClass().getClassLoader());
@@ -1692,7 +1708,7 @@ class MySqlPipelineITCase extends MySqlSourceTestBase {
         List<Event> newTableExpectedEvents = getEventsWithComments(newTableId);
         expectedEvents.addAll(newTableExpectedEvents);
 
-        List<Event> actual = fetchResults(events, expectedEvents.size());
+        List<Event> actual = MySqSourceTestUtils.fetchResults(events, expectedEvents.size());
         assertEqualsInAnyOrder(
                 expectedEvents.stream().map(Object::toString).collect(Collectors.toList()),
                 actual.stream().map(Object::toString).collect(Collectors.toList()));

@@ -20,17 +20,14 @@ package org.apache.flink.cdc.connectors.oracle.table;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.cdc.connectors.base.options.StartupOptions;
 import org.apache.flink.cdc.connectors.base.source.jdbc.JdbcIncrementalSource;
-import org.apache.flink.cdc.connectors.oracle.OracleSource;
 import org.apache.flink.cdc.connectors.oracle.source.OracleSourceBuilder;
 import org.apache.flink.cdc.debezium.DebeziumDeserializationSchema;
-import org.apache.flink.cdc.debezium.DebeziumSourceFunction;
 import org.apache.flink.cdc.debezium.table.MetadataConverter;
 import org.apache.flink.cdc.debezium.table.RowDataDebeziumDeserializeSchema;
 import org.apache.flink.table.catalog.ResolvedSchema;
 import org.apache.flink.table.connector.ChangelogMode;
 import org.apache.flink.table.connector.source.DynamicTableSource;
 import org.apache.flink.table.connector.source.ScanTableSource;
-import org.apache.flink.table.connector.source.SourceFunctionProvider;
 import org.apache.flink.table.connector.source.SourceProvider;
 import org.apache.flink.table.connector.source.abilities.SupportsReadingMetadata;
 import org.apache.flink.table.data.RowData;
@@ -67,7 +64,6 @@ public class OracleTableSource implements ScanTableSource, SupportsReadingMetada
     private final String schemaName;
     private final Properties dbzProperties;
     private final StartupOptions startupOptions;
-    private final boolean enableParallelRead;
     private final int splitSize;
     private final int splitMetaGroupSize;
     private final int fetchSize;
@@ -104,7 +100,6 @@ public class OracleTableSource implements ScanTableSource, SupportsReadingMetada
             String password,
             Properties dbzProperties,
             StartupOptions startupOptions,
-            boolean enableParallelRead,
             int splitSize,
             int splitMetaGroupSize,
             int fetchSize,
@@ -131,7 +126,6 @@ public class OracleTableSource implements ScanTableSource, SupportsReadingMetada
         this.startupOptions = startupOptions;
         this.producedDataType = physicalSchema.toPhysicalRowDataType();
         this.metadataKeys = Collections.emptyList();
-        this.enableParallelRead = enableParallelRead;
         this.splitSize = splitSize;
         this.splitMetaGroupSize = splitMetaGroupSize;
         this.fetchSize = fetchSize;
@@ -168,54 +162,35 @@ public class OracleTableSource implements ScanTableSource, SupportsReadingMetada
                                 OracleDeserializationConverterFactory.instance())
                         .build();
 
-        if (enableParallelRead) {
-            JdbcIncrementalSource<RowData> oracleChangeEventSource =
-                    OracleSourceBuilder.OracleIncrementalSource.<RowData>builder()
-                            .hostname(hostname)
-                            .url(url)
-                            .port(port)
-                            .databaseList(database)
-                            .schemaList(schemaName)
-                            .tableList(schemaName + "." + tableName)
-                            .username(username)
-                            .password(password)
-                            .startupOptions(startupOptions)
-                            .deserializer(deserializer)
-                            .debeziumProperties(dbzProperties)
-                            .splitSize(splitSize)
-                            .splitMetaGroupSize(splitMetaGroupSize)
-                            .fetchSize(fetchSize)
-                            .connectTimeout(connectTimeout)
-                            .connectionPoolSize(connectionPoolSize)
-                            .connectMaxRetries(connectMaxRetries)
-                            .distributionFactorUpper(distributionFactorUpper)
-                            .distributionFactorLower(distributionFactorLower)
-                            .closeIdleReaders(closeIdleReaders)
-                            .skipSnapshotBackfill(skipSnapshotBackfill)
-                            .chunkKeyColumn(chunkKeyColumn)
-                            .scanNewlyAddedTableEnabled(scanNewlyAddedTableEnabled)
-                            .assignUnboundedChunkFirst(assignUnboundedChunkFirst)
-                            .build();
+        JdbcIncrementalSource<RowData> oracleChangeEventSource =
+                OracleSourceBuilder.OracleIncrementalSource.<RowData>builder()
+                        .hostname(hostname)
+                        .url(url)
+                        .port(port)
+                        .databaseList(database)
+                        .schemaList(schemaName)
+                        .tableList(schemaName + "." + tableName)
+                        .username(username)
+                        .password(password)
+                        .startupOptions(startupOptions)
+                        .deserializer(deserializer)
+                        .debeziumProperties(dbzProperties)
+                        .splitSize(splitSize)
+                        .splitMetaGroupSize(splitMetaGroupSize)
+                        .fetchSize(fetchSize)
+                        .connectTimeout(connectTimeout)
+                        .connectionPoolSize(connectionPoolSize)
+                        .connectMaxRetries(connectMaxRetries)
+                        .distributionFactorUpper(distributionFactorUpper)
+                        .distributionFactorLower(distributionFactorLower)
+                        .closeIdleReaders(closeIdleReaders)
+                        .skipSnapshotBackfill(skipSnapshotBackfill)
+                        .chunkKeyColumn(chunkKeyColumn)
+                        .scanNewlyAddedTableEnabled(scanNewlyAddedTableEnabled)
+                        .assignUnboundedChunkFirst(assignUnboundedChunkFirst)
+                        .build();
 
-            return SourceProvider.of(oracleChangeEventSource);
-        } else {
-            OracleSource.Builder<RowData> builder =
-                    OracleSource.<RowData>builder()
-                            .hostname(hostname)
-                            .url(url)
-                            .port(port)
-                            .database(database)
-                            .tableList(schemaName + "." + tableName)
-                            .schemaList(schemaName)
-                            .username(username)
-                            .password(password)
-                            .debeziumProperties(dbzProperties)
-                            .startupOptions(startupOptions)
-                            .deserializer(deserializer);
-            DebeziumSourceFunction<RowData> sourceFunction = builder.build();
-
-            return SourceFunctionProvider.of(sourceFunction, false);
-        }
+        return SourceProvider.of(oracleChangeEventSource);
     }
 
     private MetadataConverter[] getMetadataConverters() {
@@ -249,7 +224,6 @@ public class OracleTableSource implements ScanTableSource, SupportsReadingMetada
                         password,
                         dbzProperties,
                         startupOptions,
-                        enableParallelRead,
                         splitSize,
                         splitMetaGroupSize,
                         fetchSize,
@@ -290,7 +264,6 @@ public class OracleTableSource implements ScanTableSource, SupportsReadingMetada
                 && Objects.equals(startupOptions, that.startupOptions)
                 && Objects.equals(producedDataType, that.producedDataType)
                 && Objects.equals(metadataKeys, that.metadataKeys)
-                && Objects.equals(enableParallelRead, that.enableParallelRead)
                 && Objects.equals(splitSize, that.splitSize)
                 && Objects.equals(splitMetaGroupSize, that.splitMetaGroupSize)
                 && Objects.equals(fetchSize, that.fetchSize)
@@ -322,7 +295,6 @@ public class OracleTableSource implements ScanTableSource, SupportsReadingMetada
                 startupOptions,
                 producedDataType,
                 metadataKeys,
-                enableParallelRead,
                 splitSize,
                 splitMetaGroupSize,
                 fetchSize,

@@ -17,7 +17,6 @@
 
 package org.apache.flink.cdc.connectors.base.dialect;
 
-import org.apache.flink.cdc.common.annotation.Experimental;
 import org.apache.flink.cdc.connectors.base.config.SourceConfig;
 import org.apache.flink.cdc.connectors.base.source.assigner.splitter.ChunkSplitter;
 import org.apache.flink.cdc.connectors.base.source.assigner.state.ChunkSplitterState;
@@ -39,7 +38,6 @@ import java.util.Map;
  *
  * @param <C> The source config of data source.
  */
-@Experimental
 public interface DataSourceDialect<C extends SourceConfig> extends Serializable, Closeable {
 
     /** Get the name of dialect. */
