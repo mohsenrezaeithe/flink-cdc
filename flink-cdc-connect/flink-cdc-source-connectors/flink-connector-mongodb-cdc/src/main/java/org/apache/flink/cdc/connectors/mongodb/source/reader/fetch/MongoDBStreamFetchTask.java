@@ -38,7 +38,6 @@ import com.mongodb.client.model.changestream.OperationType;
 import com.mongodb.kafka.connect.source.heartbeat.HeartbeatManager;
 import io.debezium.connector.base.ChangeEventQueue;
 import io.debezium.pipeline.DataChangeEvent;
-import org.apache.kafka.common.utils.SystemTime;
 import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.source.SourceRecord;
@@ -83,7 +82,7 @@ public class MongoDBStreamFetchTask implements FetchTask<SourceSplitBase, MongoD
     private volatile boolean taskRunning = false;
 
     private MongoDBSourceConfig sourceConfig;
-    private final Time time = new SystemTime();
+    private final Time time = Time.SYSTEM;
     private boolean supportsStartAtOperationTime = true;
     private boolean supportsStartAfter = true;
 

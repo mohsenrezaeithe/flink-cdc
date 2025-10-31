@@ -82,6 +82,7 @@ limitations under the License.
         <flink-major-1.20>1.20</flink-major-1.20>
         <flink-major-2.0>2.0</flink-major-2.0>
         <flink.shaded.version>20.0</flink.shaded.version>
+        <kafka.version>3.9.1</kafka.version> <!-- Pins for debezium-embedded and Debezium 1.9.x.FINAL -->
         <debezium.version>1.9.8.Final</debezium.version>
         <!-- TODO: Update this, when StarRocks releases a 2.0 compatible connector. -->
         <starrocks.connector.version>1.2.11_flink-${flink-major-1.20}</starrocks.connector.version>
@@ -145,6 +146,12 @@ limitations under the License.
                 <groupId>org.codehaus.janino</groupId>
                 <artifactId>janino</artifactId>
                 <version>${janino.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.apache.kafka</groupId>
+                <artifactId>connect-api</artifactId>
+                <version>${kafka.version}</version>
             </dependency>
 
             <dependency>
