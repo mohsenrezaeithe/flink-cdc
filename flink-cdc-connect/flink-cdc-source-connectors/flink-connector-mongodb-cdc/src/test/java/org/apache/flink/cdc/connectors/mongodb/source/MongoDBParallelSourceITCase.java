@@ -392,7 +392,7 @@ class MongoDBParallelSourceITCase extends MongoDBSourceTestBase {
                         "+U[2000, user_21, Pittsburgh, 123567891234]",
                         // delete message only contains _id, sql job contain value because of
                         // changelog normalization
-                        "-D[0, null, null, null]");
+                        "-D[null, null, null, null]");
         MongoDBAssertUtils.assertEqualsInAnyOrder(expectedRecords, records);
     }
 
@@ -430,7 +430,7 @@ class MongoDBParallelSourceITCase extends MongoDBSourceTestBase {
                         "+U[2000, user_21, Pittsburgh, 123567891234]",
                         // delete message only contains _id, sql job contain value because of
                         // changelog normalization
-                        "-D[0, null, null, null]");
+                        "-D[null, null, null, null]");
         // when skip backfill, the wal log between (snapshot, high_watermark) will be seen as
         // stream event.
         MongoDBAssertUtils.assertEqualsInAnyOrder(expectedRecords, records);
@@ -470,7 +470,7 @@ class MongoDBParallelSourceITCase extends MongoDBSourceTestBase {
                         "+U[2000, user_21, Pittsburgh, 123567891234]",
                         // delete message only contains _id, sql job contain value because of
                         // changelog normalization
-                        "-D[0, null, null, null]");
+                        "-D[null, null, null, null]");
         // when skip backfill, the wal log between (snapshot, high_watermark) will still be
         // seen as stream event. This will occur data duplicate. For example, user_20 will be
         // deleted twice, and user_15213 will be inserted twice.
